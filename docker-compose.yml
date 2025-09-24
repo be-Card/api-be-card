@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Base de datos PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: becard_postgres
+    environment:
+      POSTGRES_USER: beCard
+      POSTGRES_PASSWORD: beCard2025.
+      POSTGRES_DB: becard_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - becard_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beCard -d becard_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API FastAPI
+  api:
+    build: .
+    container_name: becard_api
+    environment:
+      DATABASE_URL: postgresql://beCard:beCard2025.@postgres:5432/becard_db
+      APP_NAME: BeCard API
+      DEBUG: "true"
+      HOST: 0.0.0.0
+      PORT: 8000
+      SECRET_KEY: your-secret-key-change-this-in-production-make-it-very-long-and-random-docker
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - becard_network
+    restart: unless-stopped
+    volumes:
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # pgAdmin para administrar PostgreSQL
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: becard_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@becard.com
+      PGADMIN_DEFAULT_PASSWORD: beCard2025.
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    networks:
+      - becard_network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  becard_network:
+    driver: bridge

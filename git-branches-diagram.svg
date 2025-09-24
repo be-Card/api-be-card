@@ -1,0 +1,125 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+     refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="#f8f9fa"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#2c3e50">
+    Git Workflow - BeCard API
+  </text>
+  
+  <!-- Main branch -->
+  <line x1="50" y1="100" x2="750" y2="100" stroke="#e74c3c" stroke-width="4"/>
+  <text x="20" y="105" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#e74c3c">main</text>
+  
+  <!-- Main commits -->
+  <circle cx="100" cy="100" r="8" fill="#e74c3c"/>
+  <text x="100" y="85" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#2c3e50">Initial</text>
+  
+  <circle cx="200" cy="100" r="8" fill="#e74c3c"/>
+  <text x="200" y="85" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#2c3e50">API Setup</text>
+  
+  <circle cx="650" cy="100" r="8" fill="#e74c3c"/>
+  <text x="650" y="85" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#2c3e50">Release v1.0</text>
+  
+  <!-- Develop branch -->
+  <line x1="200" y1="100" x2="200" y2="180" stroke="#3498db" stroke-width="2"/>
+  <line x1="200" y1="180" x2="600" y2="180" stroke="#3498db" stroke-width="4"/>
+  <line x1="600" y1="180" x2="650" y2="100" stroke="#3498db" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="170" y="185" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#3498db">develop</text>
+  
+  <!-- Develop commits -->
+  <circle cx="250" cy="180" r="6" fill="#3498db"/>
+  <circle cx="350" cy="180" r="6" fill="#3498db"/>
+  <circle cx="450" cy="180" r="6" fill="#3498db"/>
+  <circle cx="550" cy="180" r="6" fill="#3498db"/>
+  
+  <!-- Feature branches -->
+  <!-- Feature 1: Auth -->
+  <line x1="250" y1="180" x2="250" y2="250" stroke="#9b59b6" stroke-width="2"/>
+  <line x1="250" y1="250" x2="320" y2="250" stroke="#9b59b6" stroke-width="3"/>
+  <line x1="320" y1="250" x2="350" y2="180" stroke="#9b59b6" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="200" y="255" font-family="Arial, sans-serif" font-size="12" fill="#9b59b6">feature/auth-jwt</text>
+  
+  <circle cx="280" cy="250" r="5" fill="#9b59b6"/>
+  <circle cx="310" cy="250" r="5" fill="#9b59b6"/>
+  
+  <!-- Feature 2: Cards -->
+  <line x1="350" y1="180" x2="350" y2="320" stroke="#e67e22" stroke-width="2"/>
+  <line x1="350" y1="320" x2="420" y2="320" stroke="#e67e22" stroke-width="3"/>
+  <line x1="420" y1="320" x2="450" y2="180" stroke="#e67e22" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="300" y="325" font-family="Arial, sans-serif" font-size="12" fill="#e67e22">feature/card-system</text>
+  
+  <circle cx="380" cy="320" r="5" fill="#e67e22"/>
+  <circle cx="410" cy="320" r="5" fill="#e67e22"/>
+  
+  <!-- Bugfix -->
+  <line x1="450" y1="180" x2="450" y2="280" stroke="#f39c12" stroke-width="2"/>
+  <line x1="450" y1="280" x2="500" y2="280" stroke="#f39c12" stroke-width="3"/>
+  <line x1="500" y1="280" x2="550" y2="180" stroke="#f39c12" stroke-width="2" marker-end="url(#arrowhead)"/>
+  <text x="400" y="285" font-family="Arial, sans-serif" font-size="12" fill="#f39c12">bugfix/validation</text>
+  
+  <circle cx="475" cy="280" r="5" fill="#f39c12"/>
+  
+  <!-- Labels and annotations -->
+  <text x="50" y="140" font-family="Arial, sans-serif" font-size="12" fill="#7f8c8d">Producción</text>
+  <text x="50" y="155" font-family="Arial, sans-serif" font-size="12" fill="#7f8c8d">Estable</text>
+  
+  <text x="50" y="220" font-family="Arial, sans-serif" font-size="12" fill="#7f8c8d">Integración</text>
+  <text x="50" y="235" font-family="Arial, sans-serif" font-size="12" fill="#7f8c8d">Testing</text>
+  
+  <!-- Workflow steps -->
+  <rect x="500" y="380" width="280" height="200" fill="#ecf0f1" stroke="#bdc3c7" stroke-width="1" rx="5"/>
+  <text x="640" y="400" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#2c3e50">
+    Flujo de Trabajo
+  </text>
+  
+  <text x="510" y="425" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    1. Crear feature branch desde develop
+  </text>
+  <text x="510" y="445" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    2. Desarrollar funcionalidad
+  </text>
+  <text x="510" y="465" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    3. Crear Pull Request → develop
+  </text>
+  <text x="510" y="485" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    4. Code Review y merge
+  </text>
+  <text x="510" y="505" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    5. Testing en develop
+  </text>
+  <text x="510" y="525" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    6. Release: develop → main
+  </text>
+  <text x="510" y="545" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">
+    7. Tag de versión en main
+  </text>
+  
+  <!-- Legend -->
+  <rect x="50" y="380" width="200" height="150" fill="#ecf0f1" stroke="#bdc3c7" stroke-width="1" rx="5"/>
+  <text x="150" y="400" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#2c3e50">
+    Leyenda
+  </text>
+  
+  <line x1="60" y1="420" x2="90" y2="420" stroke="#e74c3c" stroke-width="4"/>
+  <text x="100" y="425" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">main (producción)</text>
+  
+  <line x1="60" y1="440" x2="90" y2="440" stroke="#3498db" stroke-width="4"/>
+  <text x="100" y="445" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">develop</text>
+  
+  <line x1="60" y1="460" x2="90" y2="460" stroke="#9b59b6" stroke-width="3"/>
+  <text x="100" y="465" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">feature/*</text>
+  
+  <line x1="60" y1="480" x2="90" y2="480" stroke="#f39c12" stroke-width="3"/>
+  <text x="100" y="485" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">bugfix/*</text>
+  
+  <line x1="60" y1="500" x2="90" y2="500" stroke="#e67e22" stroke-width="3"/>
+  <text x="100" y="505" font-family="Arial, sans-serif" font-size="12" fill="#2c3e50">hotfix/*</text>
+</svg>
