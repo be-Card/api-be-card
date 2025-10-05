@@ -1,7 +1,8 @@
 """
 Modelos de transacciones de puntos y pagos para la API BeCard
 """
-from sqlmodel import SQLModel, Field, Relationship, Index
+from sqlmodel import SQLModel, Field, Relationship, Index, Column
+from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from decimal import Decimal
@@ -71,9 +72,7 @@ class Pago(SQLModel, table=True):
     )
     id_metodo_pago: int = Field(foreign_key="tipos_metodo_pago.id", index=True)
     monto: Decimal = Field(
-        max_digits=10,
-        decimal_places=2,
-        gt=0,
+        sa_column=Column(Numeric(10, 2), nullable=False),
         description="Monto del pago"
     )
     estado: TipoEstadoPago = Field(index=True, description="Estado del pago")
@@ -149,7 +148,7 @@ class PagoBase(SQLModel):
     id_venta: int
     fecha_venta: datetime
     id_metodo_pago: int
-    monto: Decimal = Field(max_digits=10, decimal_places=2, gt=0)
+    monto: Decimal
     estado: TipoEstadoPago
     id_transaccion_proveedor: Optional[str] = None
     motivo_rechazo: Optional[str] = None
@@ -160,7 +159,7 @@ class PagoCreate(SQLModel):
     id_venta: int
     fecha_venta: datetime
     id_metodo_pago: int
-    monto: Decimal = Field(max_digits=10, decimal_places=2, gt=0)
+    monto: Decimal
     id_transaccion_proveedor: Optional[str] = None
 
 

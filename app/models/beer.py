@@ -1,7 +1,8 @@
 """
 Modelos de cervezas, estilos y precios para la API BeCard
 """
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from decimal import Decimal
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from .user_extended import Usuario
     from .sales import Venta
     from .sales_point import Equipo
-    from .pricing import ReglaDePrecioEntidad
+    # from .pricing import ReglaDePrecioEntidad  # DEPRECATED
 
 
 class TipoEstiloCerveza(BaseModel, table=True):
@@ -35,10 +36,7 @@ class Cerveza(BaseModel, TimestampMixin, table=True):
     tipo: str = Field(max_length=50)
     abv: Optional[Decimal] = Field(
         default=None,
-        max_digits=4,
-        decimal_places=2,
-        ge=0,
-        le=100,
+        sa_column=Column(Numeric(4, 2)),
         description="Alcohol by volume (0-100%)"
     )
     ibu: Optional[int] = Field(
@@ -59,7 +57,7 @@ class Cerveza(BaseModel, TimestampMixin, table=True):
     precios_historicos: List["PrecioCerveza"] = Relationship(back_populates="cerveza")
     ventas: List["Venta"] = Relationship(back_populates="cerveza")
     equipos: List["Equipo"] = Relationship(back_populates="cerveza")
-    reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="cerveza")
+    # reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="cerveza")  # DEPRECATED
 
 
 class CervezaEstilo(SQLModel, table=True):
@@ -80,7 +78,7 @@ class PrecioCerveza(SQLModel, table=True):
     
     id: Optional[int] = Field(default=None, primary_key=True)
     id_cerveza: int = Field(foreign_key="cervezas.id", index=True)
-    precio: Decimal = Field(max_digits=10, decimal_places=2, gt=0)
+    precio: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     fecha_inicio: datetime = Field(default_factory=datetime.utcnow, index=True)
     fecha_fin: Optional[datetime] = Field(
         default=None,
@@ -117,7 +115,7 @@ class CervezaBase(SQLModel):
     """Esquema base para cerveza"""
     nombre: str = Field(max_length=50)
     tipo: str = Field(max_length=50)
-    abv: Optional[Decimal] = Field(default=None, max_digits=4, decimal_places=2, ge=0, le=100)
+    abv: Optional[Decimal] = None
     ibu: Optional[int] = Field(default=None, ge=0, le=100)
     descripcion: Optional[str] = None
     imagen: Optional[str] = None
@@ -144,7 +142,7 @@ class CervezaUpdate(SQLModel):
     """Esquema para actualizar cerveza"""
     nombre: Optional[str] = Field(default=None, max_length=50)
     tipo: Optional[str] = Field(default=None, max_length=50)
-    abv: Optional[Decimal] = Field(default=None, max_digits=4, decimal_places=2, ge=0, le=100)
+    abv: Optional[Decimal] = None
     ibu: Optional[int] = Field(default=None, ge=0, le=100)
     descripcion: Optional[str] = None
     imagen: Optional[str] = None
@@ -157,7 +155,7 @@ class CervezaUpdate(SQLModel):
 class PrecioCervezaCreate(SQLModel):
     """Esquema para crear precio de cerveza"""
     id_cerveza: int
-    precio: Decimal = Field(max_digits=10, decimal_places=2, gt=0)
+    precio: Decimal
     motivo: Optional[str] = None
 
 
