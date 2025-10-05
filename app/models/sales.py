@@ -2,7 +2,8 @@
 Modelos de ventas y transacciones para la API BeCard
 Incluye soporte para particionamiento por fecha
 """
-from sqlmodel import SQLModel, Field, Relationship, Index
+from sqlmodel import SQLModel, Field, Relationship, Index, Column
+from sqlalchemy import Numeric
 from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 from decimal import Decimal
@@ -30,16 +31,12 @@ class Venta(SQLModel, table=True):
     fecha_hora: datetime = Field(default_factory=datetime.utcnow, primary_key=True, index=True)
     cantidad_ml: int = Field(gt=0, description="Cantidad en mililitros")
     monto_total: Decimal = Field(
-        max_digits=10, 
-        decimal_places=2, 
-        gt=0,
+        sa_column=Column(Numeric(10, 2), nullable=False),
         description="Monto total de la venta"
     )
     descuento_aplicado: Decimal = Field(
         default=0,
-        max_digits=10,
-        decimal_places=2,
-        ge=0,
+        sa_column=Column(Numeric(10, 2), nullable=False, server_default="0"),
         description="Descuento aplicado a la venta"
     )
     notas: Optional[str] = Field(default=None, description="Notas adicionales")
@@ -70,8 +67,8 @@ class Venta(SQLModel, table=True):
 class VentaBase(SQLModel):
     """Esquema base para venta"""
     cantidad_ml: int = Field(gt=0)
-    monto_total: Decimal = Field(max_digits=10, decimal_places=2, gt=0)
-    descuento_aplicado: Decimal = Field(default=0, max_digits=10, decimal_places=2, ge=0)
+    monto_total: Decimal
+    descuento_aplicado: Decimal = Decimal("0")
     notas: Optional[str] = None
     id_usuario: Optional[int] = None
     id_cerveza: Optional[int] = None
@@ -93,8 +90,8 @@ class VentaRead(VentaBase):
 class VentaUpdate(SQLModel):
     """Esquema para actualizar venta (limitado)"""
     cantidad_ml: Optional[int] = Field(default=None, gt=0)
-    monto_total: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2, gt=0)
-    descuento_aplicado: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2, ge=0)
+    monto_total: Optional[Decimal] = None
+    descuento_aplicado: Optional[Decimal] = None
     notas: Optional[str] = None
 
 

@@ -69,36 +69,71 @@ class Usuario(BaseModel, table=True):
     """Modelo principal de usuario extendido"""
     __tablename__ = "usuarios"
     
-    nombre_usuario: str = Field(max_length=50, unique=True, index=True)
+    # Identificación
+    nombre_usuario: Optional[str] = Field(max_length=50, unique=True, index=True, default=None)
+    codigo_cliente: str = Field(
+        max_length=20, 
+        unique=True, 
+        index=True,
+        description="Código único para QR (usado por guests y app users)"
+    )
+    
+    # Datos personales
     nombres: str = Field(max_length=100)
     apellidos: str = Field(max_length=100)
     telefono: Optional[str] = Field(max_length=20, default=None)
-    sexo: TipoSexo
-    email: str = Field(
+    sexo: Optional[TipoSexo] = Field(default=None)
+    fecha_nac: Optional[date] = Field(default=None)
+    
+    # Credenciales (opcionales para guests)
+    email: Optional[str] = Field(
         max_length=100, 
         unique=True, 
         index=True,
+        default=None,
         regex=r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
     )
     password_hash: Optional[str] = Field(default=None)
     password_salt: Optional[str] = Field(default=None)
+    
+    # Tipo de registro
+    tipo_registro: str = Field(
+        max_length=20,
+        default='app',
+        index=True,
+        description="app, punto_venta, importado"
+    )
+    
+    # Estado y seguridad
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow, index=True)
-    fecha_nac: Optional[date] = Field(default=None)
     ultimo_login: Optional[datetime] = Field(default=None)
-    activo: bool = Field(default=False, index=True)
+    activo: bool = Field(default=True, index=True)
     verificado: bool = Field(default=False, description="Si el email está verificado")
     intentos_login_fallidos: int = Field(default=0, ge=0, description="Contador para bloqueo de seguridad")
     bloqueado_hasta: Optional[datetime] = Field(default=None, description="Fecha hasta la cual está bloqueado")
     
+    # Metadata para guests
+    registrado_por: Optional[int] = Field(
+        foreign_key="usuarios.id",
+        default=None,
+        description="ID del socio que registró este guest"
+    )
+    
     # Relaciones
-    roles: List["UsuarioRol"] = Relationship(back_populates="usuario")
+    roles: List["UsuarioRol"] = Relationship(
+        back_populates="usuario",
+        sa_relationship_kwargs={"foreign_keys": "UsuarioRol.id_usuario"}
+    )
     canjes: List["Canje"] = Relationship(back_populates="usuario")
     transacciones_puntos: List["TransaccionPuntos"] = Relationship(back_populates="usuario")
     nivel: Optional["UsuarioNivel"] = Relationship(back_populates="usuario")
     metodos_pago: List["UsuarioMetodoPago"] = Relationship(back_populates="usuario")
     ventas: List["Venta"] = Relationship(back_populates="usuario")
     cervezas_creadas: List["Cerveza"] = Relationship(back_populates="creador")
-    puntos_venta: List["PuntoVenta"] = Relationship(back_populates="socio")
+    puntos_venta: List["PuntoVenta"] = Relationship(
+        back_populates="socio",
+        sa_relationship_kwargs={"foreign_keys": "PuntoVenta.id_usuario_socio"}
+    )
     referidos_generados: List["Referido"] = Relationship(
         back_populates="usuario_generador",
         sa_relationship_kwargs={"foreign_keys": "Referido.id_usuario_generador"}
@@ -107,6 +142,14 @@ class Usuario(BaseModel, table=True):
         back_populates="usuario_referido", 
         sa_relationship_kwargs={"foreign_keys": "Referido.id_usuario_referido"}
     )
+    
+    def is_guest(self) -> bool:
+        """Verifica si el usuario es guest (sin cuenta)"""
+        return self.tipo_registro == 'punto_venta' and self.email is None
+    
+    def can_login(self) -> bool:
+        """Verifica si el usuario puede hacer login"""
+        return self.email is not None and self.password_hash is not None
 
 
 class UsuarioRol(SQLModel, table=True):
@@ -120,7 +163,10 @@ class UsuarioRol(SQLModel, table=True):
     fecha_revocacion: Optional[datetime] = Field(default=None, description="Fecha de revocación del rol")
     
     # Relaciones
-    usuario: Usuario = Relationship(back_populates="roles")
+    usuario: Usuario = Relationship(
+        back_populates="roles",
+        sa_relationship_kwargs={"foreign_keys": "UsuarioRol.id_usuario"}
+    )
     rol: TipoRolUsuario = Relationship(back_populates="usuarios_roles")
 
 

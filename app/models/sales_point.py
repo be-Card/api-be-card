@@ -1,7 +1,8 @@
 """
 Modelos de puntos de venta, equipos y barriles para la API BeCard
 """
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime, date
 from decimal import Decimal
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     from .user_extended import Usuario
     from .beer import Cerveza
     from .sales import Venta
-    from .pricing import ReglaDePrecioEntidad
+
 
 
 class TipoEstadoEquipo(BaseModel, table=True):
@@ -55,9 +56,12 @@ class PuntoVenta(BaseModel, TimestampMixin, table=True):
     activo: bool = Field(default=True, description="Si el punto de venta está activo")
     
     # Relaciones
-    socio: Optional["Usuario"] = Relationship(back_populates="puntos_venta")
+    socio: Optional["Usuario"] = Relationship(
+        back_populates="puntos_venta",
+        sa_relationship_kwargs={"foreign_keys": "PuntoVenta.id_usuario_socio"}
+    )
     equipos: List["Equipo"] = Relationship(back_populates="punto_venta")
-    reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="punto_venta")
+    # reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="punto_venta")  # DEPRECATED
 
 
 class Equipo(BaseModel, table=True):
@@ -70,8 +74,7 @@ class Equipo(BaseModel, table=True):
     capacidad_actual: int = Field(ge=0, description="Capacidad actual en litros")
     temperatura_actual: Optional[Decimal] = Field(
         default=None,
-        max_digits=4,
-        decimal_places=2,
+        sa_column=Column(Numeric(4, 2)),
         description="Temperatura actual del equipo"
     )
     ultima_limpieza: Optional[date] = Field(default=None, description="Fecha de última limpieza")
@@ -86,23 +89,10 @@ class Equipo(BaseModel, table=True):
     punto_venta: Optional[PuntoVenta] = Relationship(back_populates="equipos")
     cerveza: Optional["Cerveza"] = Relationship(back_populates="equipos")
     ventas: List["Venta"] = Relationship(back_populates="equipo")
-    reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="equipo")
+    # reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="equipo")  # DEPRECATED
 
 
-# DEPRECATED: EquipoBarril ya no es necesario según el schema mejorado
-# El equipo tiene una relación directa con el tipo de barril via id_barril
-# Mantener comentado para referencia histórica
-# class EquipoBarril(SQLModel, table=True):
-#     """Relación entre equipos y barriles"""
-#     __tablename__ = "equipos_barriles"
-#     
-#     id_equipo: int = Field(foreign_key="equipos.id", primary_key=True)
-#     id_barril: int = Field(foreign_key="tipos_barril.id")
-#     asignado_el: datetime = Field(default_factory=datetime.utcnow)
-#     
-#     # Relaciones
-#     equipo: Equipo = Relationship(back_populates="barril")
-#     barril: TipoBarril = Relationship(back_populates="equipos_barriles")
+# DEPRECATED: EquipoBarril eliminado - relación directa via id_barril en Equipo
 
 
 # Esquemas Pydantic para API
@@ -191,7 +181,7 @@ class EquipoBase(SQLModel):
     nombre_equipo: Optional[str] = Field(default=None, max_length=50)
     id_barril: int
     capacidad_actual: int = Field(ge=0)
-    temperatura_actual: Optional[Decimal] = Field(default=None, max_digits=4, decimal_places=2)
+    temperatura_actual: Optional[Decimal] = None
     ultima_limpieza: Optional[date] = None
     proxima_limpieza: Optional[date] = None
     id_estado_equipo: int
@@ -216,7 +206,7 @@ class EquipoUpdate(SQLModel):
     nombre_equipo: Optional[str] = Field(default=None, max_length=50)
     id_barril: Optional[int] = None
     capacidad_actual: Optional[int] = Field(default=None, ge=0)
-    temperatura_actual: Optional[Decimal] = Field(default=None, max_digits=4, decimal_places=2)
+    temperatura_actual: Optional[Decimal] = None
     ultima_limpieza: Optional[date] = None
     proxima_limpieza: Optional[date] = None
     id_estado_equipo: Optional[int] = None

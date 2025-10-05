@@ -1,7 +1,8 @@
 """
 Modelos de reglas de precios y alcances para la API BeCard
 """
-from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from decimal import Decimal
@@ -21,7 +22,7 @@ class TipoAlcanceReglaDePrecio(BaseModel, table=True):
     tipo_regla: str = Field(max_length=50)
     
     # Relaciones
-    reglas_precio: List["ReglaDePrecio"] = Relationship(back_populates="tipo_alcance")
+    # reglas_precio: List["ReglaDePrecio"] = Relationship(back_populates="tipo_alcance")  # No hay FK directa
 
 
 class ReglaDePrecio(BaseModel, table=True):
@@ -32,15 +33,13 @@ class ReglaDePrecio(BaseModel, table=True):
     descripcion: Optional[str] = Field(default=None, description="Descripción de la regla")
     precio: Optional[Decimal] = Field(
         default=None,
-        max_digits=10,
-        decimal_places=2,
+        sa_column=Column(Numeric(10, 2)),
         description="Precio fijo (si aplica)"
     )
     esta_activo: bool = Field(default=False, index=True)
     prioridad: TipoPrioridadRegla = Field(default=TipoPrioridadRegla.BAJA, index=True)
     multiplicador: Decimal = Field(
-        max_digits=5,
-        decimal_places=2,
+        sa_column=Column(Numeric(5, 2), nullable=False),
         description="Multiplicador para cálculo de precio"
     )
     fecha_hora_inicio: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -50,11 +49,10 @@ class ReglaDePrecio(BaseModel, table=True):
     dias_semana: Optional[str] = Field(default=None, description="Días de la semana aplicables (JSON array)")
     
     # Relaciones
-    tipo_alcance: Optional[TipoAlcanceReglaDePrecio] = Relationship(back_populates="reglas_precio")
+    # tipo_alcance: Optional[TipoAlcanceReglaDePrecio] = Relationship(back_populates="reglas_precio")  # No hay FK directa
     creador: "Usuario" = Relationship()
     alcances: List["ReglaDePrecioAlcance"] = Relationship(back_populates="regla_precio")
-    # DEPRECATED: Mantener para compatibilidad
-    entidades: List["ReglaDePrecioEntidad"] = Relationship(back_populates="regla_precio")
+    # DEPRECATED: entidades removido - usar alcances
     
     def esta_vigente(self, fecha: Optional[datetime] = None) -> bool:
         """Verifica si la regla está vigente en una fecha específica"""
@@ -81,25 +79,7 @@ class ReglaDePrecioAlcance(SQLModel, table=True):
     regla_precio: ReglaDePrecio = Relationship(back_populates="alcances")
 
 
-# DEPRECATED: Mantener para compatibilidad con código existente
-class ReglaDePrecioEntidad(SQLModel, table=True):
-    """
-    DEPRECATED: Usar ReglaDePrecioAlcance
-    Entidades específicas afectadas por reglas de precio
-    Solo se llena el campo correspondiente al tipo de alcance, el resto queda NULL
-    """
-    __tablename__ = "reglas_de_precio_entidades"
-    
-    id_regla_de_precio: int = Field(foreign_key="reglas_de_precio.id", primary_key=True)
-    id_cerveza: Optional[int] = Field(foreign_key="cervezas.id", default=None, primary_key=True)
-    id_punto_de_venta: Optional[int] = Field(foreign_key="puntos_de_venta.id", default=None, primary_key=True)
-    id_equipo: Optional[int] = Field(foreign_key="equipos.id", default=None, primary_key=True)
-    
-    # Relaciones
-    regla_precio: ReglaDePrecio = Relationship(back_populates="entidades")
-    cerveza: Optional["Cerveza"] = Relationship(back_populates="reglas_precio")
-    punto_venta: Optional["PuntoVenta"] = Relationship(back_populates="reglas_precio")
-    equipo: Optional["Equipo"] = Relationship(back_populates="reglas_precio")
+# DEPRECATED: ReglaDePrecioEntidad eliminado - usar ReglaDePrecioAlcance
 
 
 # Esquemas Pydantic para API
@@ -124,10 +104,10 @@ class ReglaDePrecioBase(SQLModel):
     """Esquema base para regla de precio"""
     nombre: str = Field(max_length=50)
     descripcion: Optional[str] = None
-    precio: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
+    precio: Optional[Decimal] = None
     esta_activo: bool = Field(default=False)
     prioridad: TipoPrioridadRegla = Field(default=TipoPrioridadRegla.BAJA)
-    multiplicador: Decimal = Field(max_digits=5, decimal_places=2)
+    multiplicador: Decimal
     fecha_hora_inicio: datetime
     fecha_hora_fin: Optional[datetime] = None
     dias_semana: Optional[str] = None
@@ -154,10 +134,10 @@ class ReglaDePrecioUpdate(SQLModel):
     """Esquema para actualizar regla de precio"""
     nombre: Optional[str] = Field(default=None, max_length=50)
     descripcion: Optional[str] = None
-    precio: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
+    precio: Optional[Decimal] = None
     esta_activo: Optional[bool] = None
     prioridad: Optional[TipoPrioridadRegla] = None
-    multiplicador: Optional[Decimal] = Field(default=None, max_digits=5, decimal_places=2)
+    multiplicador: Optional[Decimal] = None
     fecha_hora_inicio: Optional[datetime] = None
     fecha_hora_fin: Optional[datetime] = None
     dias_semana: Optional[str] = None
@@ -165,14 +145,6 @@ class ReglaDePrecioUpdate(SQLModel):
     cervezas_ids: Optional[List[int]] = None
     puntos_venta_ids: Optional[List[int]] = None
     equipos_ids: Optional[List[int]] = None
-
-
-class ReglaDePrecioEntidadRead(SQLModel):
-    """Esquema para leer entidad de regla de precio"""
-    id_regla_de_precio: int
-    id_cerveza: Optional[int] = None
-    id_punto_de_venta: Optional[int] = None
-    id_equipo: Optional[int] = None
 
 
 class CalculoPrecio(SQLModel):
