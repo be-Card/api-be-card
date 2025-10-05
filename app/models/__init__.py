@@ -13,19 +13,6 @@ from .base import (
     BaseModelWithTimestamp
 )
 
-# Modelos de usuario (existentes)
-from .user import (
-    UserRole,
-    UserBase,
-    User,
-    UserCreate,
-    UserRead,
-    UserUpdate,
-    UserLogin,
-    Token,
-    TokenData
-)
-
 # Modelos de usuario extendidos
 from .user_extended import (
     TipoRolUsuario,
@@ -103,7 +90,6 @@ from .pricing import (
     TipoAlcanceReglaDePrecio,
     ReglaDePrecio,
     ReglaDePrecioAlcance,
-    ReglaDePrecioEntidad,
     TipoAlcanceReglaDePrecioBase,
     TipoAlcanceReglaDePrecioCreate,
     TipoAlcanceReglaDePrecioRead,
@@ -111,7 +97,6 @@ from .pricing import (
     ReglaDePrecioCreate,
     ReglaDePrecioRead,
     ReglaDePrecioUpdate,
-    ReglaDePrecioEntidadRead,
     CalculoPrecio,
     ConsultaPrecio,
     CalculadoraPrecios
@@ -173,17 +158,6 @@ __all__ = [
     "BaseModel",
     "TimestampMixin",
     "BaseModelWithTimestamp",
-    
-    # User (original)
-    "UserRole",
-    "UserBase",
-    "User",
-    "UserCreate",
-    "UserRead",
-    "UserUpdate",
-    "UserLogin",
-    "Token",
-    "TokenData",
     
     # User Extended
     "TipoRolUsuario",
@@ -253,7 +227,6 @@ __all__ = [
     "TipoAlcanceReglaDePrecio",
     "ReglaDePrecio",
     "ReglaDePrecioAlcance",
-    "ReglaDePrecioEntidad",
     "TipoAlcanceReglaDePrecioBase",
     "TipoAlcanceReglaDePrecioCreate",
     "TipoAlcanceReglaDePrecioRead",
@@ -261,7 +234,6 @@ __all__ = [
     "ReglaDePrecioCreate",
     "ReglaDePrecioRead",
     "ReglaDePrecioUpdate",
-    "ReglaDePrecioEntidadRead",
     "CalculoPrecio",
     "ConsultaPrecio",
     "CalculadoraPrecios",

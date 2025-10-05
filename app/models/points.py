@@ -1,7 +1,8 @@
 """
 Modelos de sistema de puntos y conversión para la API BeCard
 """
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Column
+from sqlalchemy import Numeric
 from typing import Optional
 from datetime import datetime
 from decimal import Decimal
@@ -16,15 +17,11 @@ class ReglaConversionPuntos(SQLModel, table=True):
     
     id: Optional[int] = Field(default=None, primary_key=True)
     monto_minimo: Decimal = Field(
-        max_digits=10,
-        decimal_places=2,
-        ge=0,
+        sa_column=Column(Numeric(10, 2), nullable=False),
         description="Monto mínimo de compra para aplicar la conversión"
     )
     puntos_por_peso: Decimal = Field(
-        max_digits=6,
-        decimal_places=2,
-        gt=0,
+        sa_column=Column(Numeric(6, 2), nullable=False),
         description="Cantidad de puntos otorgados por cada peso gastado"
     )
     activo: bool = Field(default=False, index=True)
@@ -38,8 +35,8 @@ class ReglaConversionPuntos(SQLModel, table=True):
 
 class ReglaConversionPuntosBase(SQLModel):
     """Esquema base para regla de conversión de puntos"""
-    monto_minimo: Decimal = Field(max_digits=10, decimal_places=2, ge=0)
-    puntos_por_peso: Decimal = Field(max_digits=6, decimal_places=2, gt=0)
+    monto_minimo: Decimal
+    puntos_por_peso: Decimal
     activo: bool = Field(default=False)
     fecha_inicio: datetime = Field(default_factory=datetime.utcnow)
     fecha_fin: Optional[datetime] = None
@@ -59,8 +56,8 @@ class ReglaConversionPuntosRead(ReglaConversionPuntosBase):
 
 class ReglaConversionPuntosUpdate(SQLModel):
     """Esquema para actualizar regla de conversión de puntos"""
-    monto_minimo: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2, ge=0)
-    puntos_por_peso: Optional[Decimal] = Field(default=None, max_digits=6, decimal_places=2, gt=0)
+    monto_minimo: Optional[Decimal] = None
+    puntos_por_peso: Optional[Decimal] = None
     activo: Optional[bool] = None
     fecha_fin: Optional[datetime] = None
     descripcion: Optional[str] = None
@@ -77,7 +74,7 @@ class CalculoPuntos(SQLModel):
 
 class ConsultaPuntos(SQLModel):
     """Esquema para consultar puntos por monto"""
-    monto: Decimal = Field(max_digits=6, decimal_places=2, gt=0)
+    monto: Decimal
 
 
 # Funciones auxiliares para cálculo de puntos
