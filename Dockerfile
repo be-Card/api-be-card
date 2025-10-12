@@ -8,14 +8,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar archivos de dependencias
-COPY requirements.txt .
+# Instalar uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
 
-# Instalar dependencias de Python
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copiar archivos de configuración del proyecto
+COPY pyproject.toml uv.lock ./
+
+# Instalar dependencias usando uv
+RUN uv sync --frozen --no-dev
 
 # Copiar código de la aplicación
 COPY . .
@@ -29,4 +33,4 @@ USER appuser
 EXPOSE 8000
 
 # Comando por defecto
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
