@@ -7,20 +7,21 @@ from datetime import datetime
 
 
 # Esquemas para TipoRolUsuario
-class RolBase(BaseModel):
-    rol: str = Field(max_length=50)
+class TipoRolUsuarioRead(BaseModel):
+    id: int
+    nombre: str = Field(max_length=50)  # Frontend expects 'nombre' field
     descripcion: Optional[str] = None
 
-
-class RolRead(RolBase):
+class RolRead(BaseModel):
     id: int
-    creado_el: datetime
+    tipo_rol_usuario: TipoRolUsuarioRead
+    asignado_el: datetime  # Frontend expects 'asignado_el' field
 
 
 # Esquemas para TipoNivelUsuario
 class NivelBase(BaseModel):
     nivel: str = Field(max_length=50)
-    puntaje_minimo: int = Field(ge=0)
+    puntaje_minimo: int = Field(ge=0)  # Frontend expects 'puntaje_minimo'
     puntaje_max: Optional[int] = None
     beneficios: Optional[str] = None
 
@@ -33,10 +34,10 @@ class NivelRead(NivelBase):
 class UserBase(BaseModel):
     nombre_usuario: str = Field(max_length=50)
     email: EmailStr
-    nombre: str = Field(max_length=50)
-    apellido: str = Field(max_length=50)
+    nombres: str = Field(max_length=50)  # Changed from 'nombre' to 'nombres' to match database
+    apellidos: str = Field(max_length=50)  # Changed from 'apellido' to 'apellidos' to match database
     sexo: str
-    fecha_nacimiento: datetime
+    fecha_nac: datetime  # Changed from 'fecha_nacimiento' to 'fecha_nac' to match database
     telefono: Optional[str] = Field(default=None, max_length=20)
 
 
@@ -47,8 +48,8 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     """Esquema para actualizar usuario"""
-    nombre: Optional[str] = Field(default=None, max_length=50)
-    apellido: Optional[str] = Field(default=None, max_length=50)
+    nombres: Optional[str] = Field(default=None, max_length=50)  # Changed from 'nombre' to 'nombres'
+    apellidos: Optional[str] = Field(default=None, max_length=50)  # Changed from 'apellido' to 'apellidos'
     telefono: Optional[str] = Field(default=None, max_length=20)
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(default=None, min_length=8)
