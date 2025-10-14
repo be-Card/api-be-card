@@ -163,8 +163,8 @@ class UserService:
         session: Session,
         *,
         user_id: int,
-        nombre: Optional[str] = None,
-        apellido: Optional[str] = None,
+        nombres: Optional[str] = None,
+        apellidos: Optional[str] = None,
         telefono: Optional[str] = None,
         email: Optional[str] = None,
         password: Optional[str] = None
@@ -175,8 +175,8 @@ class UserService:
         Args:
             session: Sesión de base de datos
             user_id: ID del usuario
-            nombre: Nuevo nombre (opcional)
-            apellido: Nuevo apellido (opcional)
+            nombres: Nuevos nombres (opcional)
+            apellidos: Nuevos apellidos (opcional)
             telefono: Nuevo teléfono (opcional)
             email: Nuevo email (opcional)
             password: Nueva contraseña (opcional)
@@ -188,10 +188,10 @@ class UserService:
         if not db_user:
             return None
         
-        if nombre is not None:
-            db_user.nombre = nombre
-        if apellido is not None:
-            db_user.apellido = apellido
+        if nombres is not None:
+            db_user.nombres = nombres
+        if apellidos is not None:
+            db_user.apellidos = apellidos
         if telefono is not None:
             db_user.telefono = telefono
         if email is not None:
@@ -410,6 +410,27 @@ class UserService:
         statement = select(TipoRolUsuario).join(UsuarioRol).where(
             UsuarioRol.id_usuario == user_id,
             UsuarioRol.fecha_revocacion == None
+        )
+        return list(session.exec(statement).all())
+    
+    @staticmethod
+    def get_user_role_assignments(session: Session, user_id: int) -> List[UsuarioRol]:
+        """
+        Obtener las asignaciones de roles activas de un usuario con información completa
+        
+        Args:
+            session: Sesión de base de datos
+            user_id: ID del usuario
+        
+        Returns:
+            Lista de asignaciones de roles con información del rol
+        """
+        statement = select(UsuarioRol).where(
+            UsuarioRol.id_usuario == user_id,
+            UsuarioRol.fecha_revocacion == None
+        ).options(
+            # Eager load the related TipoRolUsuario
+            # Note: SQLModel/SQLAlchemy will automatically load the relationship
         )
         return list(session.exec(statement).all())
     
