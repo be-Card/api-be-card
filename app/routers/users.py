@@ -8,6 +8,7 @@ from sqlmodel import Session
 from app.core.database import get_session
 from app.services.users import UserService
 from app.models.user_extended import Usuario
+from app.routers.auth import get_current_user
 from app.schemas.users import (
     UserCreate,
     UserUpdate,
@@ -121,7 +122,7 @@ def read_user(
     """
     # Verificar permisos: usuario puede ver su propio perfil o ser admin
     user_roles = UserService.get_user_roles(session, current_user.id)
-    role_names = [role.rol for role in user_roles]
+    role_names = [role.tipo for role in user_roles]
     is_admin = "administrador" in role_names or "admin" in role_names
     
     if not is_admin and current_user.id != user_id:
@@ -138,64 +139,108 @@ def read_user(
         )
     
     # Obtener roles y nivel
-    roles = UserService.get_user_roles(session, user_id)
+    role_assignments = UserService.get_user_role_assignments(session, user_id)
     nivel = UserService.get_user_level(session, user_id)
     
-    # Convertir a respuesta
+    # Convertir a respuesta con mapeo correcto de campos
     user_dict = user.model_dump()
-    user_dict["roles"] = [role.model_dump() for role in roles]
-    user_dict["nivel"] = nivel.model_dump() if nivel else None
+    # Convert UUID to string for id_ext
+    user_dict["id_ext"] = str(user.id_ext)
+    
+    # Create roles data structure that matches frontend expectations
+    roles_data = []
+    for role_assignment in role_assignments:
+        # Access the related TipoRolUsuario through the relationship
+        role_type = role_assignment.rol
+        role_data = {
+            "id": role_assignment.id_rol,
+            "tipo_rol_usuario": {
+                "id": role_type.id,
+                "nombre": role_type.tipo,  # Map 'tipo' to 'nombre' for frontend
+                "descripcion": role_type.descripcion
+            },
+            "asignado_el": role_assignment.fecha_asignacion.isoformat()
+        }
+        roles_data.append(role_data)
+    
+    user_dict["roles"] = roles_data
+    
+    # Map nivel data with correct field names for frontend
+    if nivel:
+        nivel_dict = nivel.model_dump()
+        # Map puntaje_min to puntaje_minimo for frontend compatibility
+        nivel_dict["puntaje_minimo"] = nivel_dict.pop("puntaje_min")
+        user_dict["nivel"] = nivel_dict
+    else:
+        user_dict["nivel"] = None
     
     return UserWithRoles(**user_dict)
 
 
 @router.put("/{user_id}", response_model=UserRead)
-def update_user(
+async def update_user(
     user_id: int,
     user_update: UserUpdate,
-    session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_active_user)
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_session)
 ):
-    """
-    Actualizar datos de un usuario
+    print(f"DEBUG: Iniciando update_user")
+    print(f"DEBUG: user_id = {user_id}")
+    print(f"DEBUG: user_update = {user_update}")
+    print(f"DEBUG: current_user.id = {current_user.id}")
     
-    - **user_id**: ID del usuario
-    - **nombre**: Nuevo nombre (opcional)
-    - **apellido**: Nuevo apellido (opcional)
-    - **telefono**: Nuevo teléfono (opcional)
-    - **email**: Nuevo email (opcional)
-    - **password**: Nueva contraseña (opcional)
-    
-    Permiso: Usuario puede editar su propio perfil o admin puede editar cualquiera
-    """
-    # Verificar permisos: usuario puede editar su propio perfil o ser admin
-    user_roles = UserService.get_user_roles(session, current_user.id)
-    role_names = [role.rol for role in user_roles]
-    is_admin = "administrador" in role_names or "admin" in role_names
-    
-    if not is_admin and current_user.id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para editar este usuario"
+    try:
+        # Verificar que el usuario solo pueda editar su propio perfil
+        if current_user.id != user_id:
+            print(f"DEBUG: Error de permisos - current_user.id ({current_user.id}) != user_id ({user_id})")
+            raise HTTPException(status_code=403, detail="No tienes permisos para editar este perfil")
+        
+        print(f"DEBUG: Llamando a UserService.update_user")
+        updated_user = UserService.update_user(
+            session=db,
+            user_id=user_id,
+            nombres=user_update.nombres,
+            apellidos=user_update.apellidos,
+            telefono=user_update.telefono,
+            email=user_update.email,
+            password=user_update.password
         )
-    
-    db_user = UserService.update_user(
-        session,
-        user_id=user_id,
-        nombre=user_update.nombre,
-        apellido=user_update.apellido,
-        telefono=user_update.telefono,
-        email=user_update.email,
-        password=user_update.password
-    )
-    
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado"
+        
+        print(f"DEBUG: UserService.update_user completado, resultado: {updated_user}")
+        
+        if not updated_user:
+            print(f"DEBUG: Usuario no encontrado")
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        
+        print(f"DEBUG: Creando respuesta UserRead")
+        response = UserRead(
+            id=updated_user.id,
+            nombre_usuario=updated_user.nombre_usuario,
+            email=updated_user.email,
+            nombres=updated_user.nombres,
+            apellidos=updated_user.apellidos,
+            sexo=updated_user.sexo,
+            fecha_nac=updated_user.fecha_nac,
+            telefono=updated_user.telefono,
+            id_ext=str(updated_user.id_ext),
+            activo=updated_user.activo,
+            verificado=updated_user.verificado,
+            fecha_creacion=updated_user.fecha_creacion,
+            ultimo_login=updated_user.ultimo_login,
+            intentos_login_fallidos=updated_user.intentos_login_fallidos
         )
-    
-    return db_user
+        print(f"DEBUG: Respuesta creada exitosamente")
+        return response
+        
+    except HTTPException as he:
+        print(f"DEBUG: HTTPException capturada: {he.detail}")
+        raise
+    except Exception as e:
+        print(f"ERROR: Excepción no controlada: {str(e)}")
+        print(f"ERROR: Tipo de excepción: {type(e)}")
+        import traceback
+        print(f"ERROR: Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)
