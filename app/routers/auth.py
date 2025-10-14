@@ -12,7 +12,7 @@ from app.core.security import create_access_token, verify_token
 from app.core.config import settings
 from app.services.users import UserService
 from app.models.user_extended import Usuario
-from app.schemas.auth import Token, TokenData, LoginJSONRequest
+from app.schemas.auth import Token, LoginJSONRequest
 from app.schemas.users import UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -37,8 +37,6 @@ def get_current_user(
         raise credentials_exception
     
     user_id: int = payload.get("sub")
-    if user_id is None:
-        raise credentials_exception
     
     user = session.get(Usuario, user_id)
     if user is None:
@@ -59,13 +57,38 @@ def get_current_active_user(
     return current_user
 
 
+def _check_user_roles(session: Session, user_id: int, required_roles: list[str]) -> bool:
+    """
+    Función auxiliar para verificar si un usuario tiene alguno de los roles requeridos
+    
+    Args:
+        session: Sesión de base de datos
+        user_id: ID del usuario
+        required_roles: Lista de roles requeridos (cualquiera de ellos es válido)
+    
+    Returns:
+        bool: True si el usuario tiene al menos uno de los roles requeridos
+    """
+    user_roles = UserService.get_user_roles(session, user_id)
+    role_names = [role.tipo for role in user_roles]
+    return any(role in role_names for role in required_roles)
+
+
 def require_role(required_role: str):
-    """Decorator para requerir un rol específico"""
-    def role_checker(current_user: Annotated[Usuario, Depends(get_current_active_user)]):
-        user_roles = UserService.get_user_roles(session, current_user.id)
-        role_names = [role.rol for role in user_roles]
-        
-        if required_role not in role_names:
+    """
+    Factory function para crear dependencias que requieren un rol específico
+    
+    Args:
+        required_role: Nombre del rol requerido
+    
+    Returns:
+        Función de dependencia que verifica el rol
+    """
+    def role_checker(
+        current_user: Annotated[Usuario, Depends(get_current_active_user)],
+        session: Session = Depends(get_session)
+    ) -> Usuario:
+        if not _check_user_roles(session, current_user.id, [required_role]):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Se requiere rol: {required_role}"
@@ -74,21 +97,86 @@ def require_role(required_role: str):
     return role_checker
 
 
-def require_admin(current_user: Annotated[Usuario, Depends(get_current_active_user)]) -> Usuario:
-    """Requerir rol de administrador"""
-    # Obtener session desde el contexto (necesitamos refactorizar esto)
-    # Por ahora, verificamos directamente
-    # TODO: Mejorar esto cuando tengamos dependencia de session inyectada
-    if not hasattr(current_user, '_roles_checked'):
-        from app.core.database import engine
-        with Session(engine) as session:
-            user_roles = UserService.get_user_roles(session, current_user.id)
-            role_names = [role.rol for role in user_roles]
-            if "administrador" not in role_names and "admin" not in role_names:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Se requieren permisos de administrador"
-                )
+def require_admin(
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    session: Session = Depends(get_session)
+) -> Usuario:
+    """
+    Dependencia que requiere permisos de administrador
+    
+    Args:
+        current_user: Usuario actual autenticado y activo
+        session: Sesión de base de datos
+    
+    Returns:
+        Usuario: El usuario actual si tiene permisos de administrador
+    
+    Raises:
+        HTTPException: 403 si el usuario no tiene permisos de administrador
+    """
+    admin_roles = ["administrador", "admin"]
+    
+    if not _check_user_roles(session, current_user.id, admin_roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren permisos de administrador"
+        )
+    
+    return current_user
+
+
+# Funciones de conveniencia para roles comunes
+def require_socio(
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    session: Session = Depends(get_session)
+) -> Usuario:
+    """
+    Dependencia que requiere rol de socio
+    
+    Args:
+        current_user: Usuario actual autenticado y activo
+        session: Sesión de base de datos
+    
+    Returns:
+        Usuario: El usuario actual si tiene rol de socio
+    
+    Raises:
+        HTTPException: 403 si el usuario no tiene rol de socio
+    """
+    if not _check_user_roles(session, current_user.id, ["socio"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de socio"
+        )
+    
+    return current_user
+
+
+def require_admin_or_socio(
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    session: Session = Depends(get_session)
+) -> Usuario:
+    """
+    Dependencia que requiere rol de administrador o socio
+    
+    Args:
+        current_user: Usuario actual autenticado y activo
+        session: Sesión de base de datos
+    
+    Returns:
+        Usuario: El usuario actual si tiene rol de administrador o socio
+    
+    Raises:
+        HTTPException: 403 si el usuario no tiene ninguno de los roles requeridos
+    """
+    allowed_roles = ["administrador", "admin", "socio"]
+    
+    if not _check_user_roles(session, current_user.id, allowed_roles):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de administrador o socio"
+        )
+    
     return current_user
 
 
@@ -107,7 +195,7 @@ def register_user(user: UserCreate, session: Session = Depends(get_session)):
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El email ya está registrado"
+            detail="El email ingresado ya está registrado"
         )
     
     # Verificar si el nombre de usuario ya existe
@@ -115,23 +203,41 @@ def register_user(user: UserCreate, session: Session = Depends(get_session)):
     if existing_username:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El nombre de usuario ya está registrado"
+            detail="El nombre de usuario ingresado ya está registrado"
         )
     
-    # Crear nuevo usuario
+    # Crear usuario
     db_user = UserService.create_user(
-        session,
+        session=session,
         nombre_usuario=user.nombre_usuario,
         email=user.email,
         password=user.password,
-        nombre=user.nombre,
-        apellido=user.apellido,
+        nombre=user.nombres,
+        apellido=user.apellidos,
         sexo=user.sexo,
-        fecha_nacimiento=user.fecha_nacimiento,
+        fecha_nacimiento=user.fecha_nac,
         telefono=user.telefono
     )
     
-    return db_user
+    # Mapear campos del modelo Usuario al schema UserRead
+    user_read = UserRead(
+        id=db_user.id,
+        id_ext=str(db_user.id_ext),  # Convertir UUID a string
+        nombre_usuario=db_user.nombre_usuario,
+        email=db_user.email,
+        nombres=db_user.nombres,  # Usar nombres directamente
+        apellidos=db_user.apellidos,  # Usar apellidos directamente
+        sexo=db_user.sexo.value if db_user.sexo else "",  # Convertir enum a string
+        fecha_nac=db_user.fecha_nac,  # Usar fecha_nac directamente
+        telefono=db_user.telefono,
+        activo=db_user.activo,
+        verificado=db_user.verificado,
+        fecha_creacion=db_user.fecha_creacion,
+        ultimo_login=db_user.ultimo_login,
+        intentos_login_fallidos=db_user.intentos_login_fallidos
+    )
+    
+    return user_read
 
 
 @router.post("/login", response_model=Token)
@@ -229,7 +335,23 @@ def read_current_user(
     Requiere token JWT válido en el header:
     Authorization: Bearer <token>
     """
-    return current_user
+    # Convert Usuario model to UserRead schema with proper field mapping
+    return UserRead(
+        id=current_user.id,
+        id_ext=str(current_user.id_ext),  # Convert UUID to string
+        nombre_usuario=current_user.nombre_usuario,
+        email=current_user.email,
+        nombres=current_user.nombres,  # Use correct field name 'nombres'
+        apellidos=current_user.apellidos,  # Use correct field name 'apellidos'
+        sexo=current_user.sexo.value if current_user.sexo else "",  # Convert enum to string
+        fecha_nac=datetime.combine(current_user.fecha_nac, datetime.min.time()) if current_user.fecha_nac else datetime.now(),  # Use correct field name 'fecha_nac'
+        telefono=current_user.telefono,
+        activo=current_user.activo,
+        verificado=current_user.verificado,
+        fecha_creacion=current_user.fecha_creacion,
+        ultimo_login=current_user.ultimo_login,
+        intentos_login_fallidos=current_user.intentos_login_fallidos
+    )
 
 
 @router.post("/refresh", response_model=Token)
@@ -285,5 +407,7 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "require_admin",
-    "require_role"
+    "require_role",
+    "require_socio",
+    "require_admin_or_socio"
 ]
