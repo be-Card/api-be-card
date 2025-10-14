@@ -1,24 +1,65 @@
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+import logging
 from app.core.config import settings
 
-# Configuración para hashing de contraseñas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Configurar logging
+logger = logging.getLogger(__name__)
 
 # Configuración JWT
 ALGORITHM = "HS256"
 
 
+def _truncate_password_safely(password: str) -> bytes:
+    """
+    Truncar contraseña de forma segura a 72 bytes para bcrypt.
+    Retorna bytes directamente para evitar problemas de codificación.
+    """
+    try:
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) <= 72:
+            return password_bytes
+        
+        return password_bytes[:72]
+    except Exception as e:
+        logger.warning(f"Error al truncar contraseña: {e}")
+        return password[:72].encode('utf-8')
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verificar contraseña plana contra hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verificar contraseña plana contra hash usando bcrypt directamente"""
+    try:
+        # Truncar contraseña de forma segura a bytes
+        safe_password_bytes = _truncate_password_safely(plain_password)
+        
+        # Convertir hash a bytes si es string
+        if isinstance(hashed_password, str):
+            hashed_password_bytes = hashed_password.encode('utf-8')
+        
+        # Verificar usando bcrypt directamente
+        return bcrypt.checkpw(safe_password_bytes, hashed_password_bytes)
+    except Exception as e:
+        logger.error(f"Error al verificar contraseña: {e}")
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    """Generar hash de contraseña"""
-    return pwd_context.hash(password)
+    """Generar hash de contraseña usando bcrypt directamente"""
+    try:
+        # Truncar contraseña de forma segura a bytes
+        safe_password_bytes = _truncate_password_safely(password)
+        
+        # Generar salt y hash usando bcrypt directamente
+        salt = bcrypt.gensalt(rounds=12)
+        hashed = bcrypt.hashpw(safe_password_bytes, salt)
+        
+        # Retornar como string
+        return hashed.decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error al generar hash de contraseña: {e}")
+        raise ValueError(f"No se pudo generar hash de contraseña: {str(e)}")
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
