@@ -1,9 +1,10 @@
 """
 Esquemas Pydantic para usuarios (API)
 """
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
+import re
 
 
 # Esquemas para TipoRolUsuario
@@ -36,14 +37,35 @@ class UserBase(BaseModel):
     email: EmailStr
     nombres: str = Field(max_length=50)  # Changed from 'nombre' to 'nombres' to match database
     apellidos: str = Field(max_length=50)  # Changed from 'apellido' to 'apellidos' to match database
-    sexo: str
-    fecha_nac: datetime  # Changed from 'fecha_nacimiento' to 'fecha_nac' to match database
+    sexo: Optional[str] = Field(default=None)  # Made optional to handle None values from database
+    fecha_nac: Optional[date] = Field(default=None)  # Made optional to match database model
     telefono: Optional[str] = Field(default=None, max_length=20)
 
 
 class UserCreate(UserBase):
     """Esquema para crear usuario"""
-    password: str = Field(min_length=8, description="Contraseña (mínimo 8 caracteres)")
+    password: str = Field(min_length=8, description="Contraseña (mínimo 8 caracteres, debe contener mayúscula, minúscula, número y carácter especial)")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Validar complejidad de contraseña"""
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una letra mayúscula")
+
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una letra minúscula")
+
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+            raise ValueError("La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?\":{}|<>)")
+
+        return v
 
 
 class UserUpdate(BaseModel):
@@ -52,7 +74,31 @@ class UserUpdate(BaseModel):
     apellidos: Optional[str] = Field(default=None, max_length=50)  # Changed from 'apellido' to 'apellidos'
     telefono: Optional[str] = Field(default=None, max_length=20)
     email: Optional[EmailStr] = None
-    password: Optional[str] = Field(default=None, min_length=8)
+    password: Optional[str] = Field(default=None, min_length=8, description="Contraseña (mínimo 8 caracteres, debe contener mayúscula, minúscula, número y carácter especial)")
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: Optional[str]) -> Optional[str]:
+        """Validar complejidad de contraseña si se proporciona"""
+        if v is None:
+            return v
+
+        if len(v) < 8:
+            raise ValueError("La contraseña debe tener al menos 8 caracteres")
+
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("La contraseña debe contener al menos una letra mayúscula")
+
+        if not re.search(r"[a-z]", v):
+            raise ValueError("La contraseña debe contener al menos una letra minúscula")
+
+        if not re.search(r"\d", v):
+            raise ValueError("La contraseña debe contener al menos un número")
+
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", v):
+            raise ValueError("La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?\":{}|<>)")
+
+        return v
 
 
 class UserRead(UserBase):

@@ -21,7 +21,7 @@ from app.models.beer import TipoEstiloCerveza, Cerveza, CervezaEstilo, PrecioCer
 from app.models.sales_point import TipoEstadoEquipo, TipoBarril, PuntoVenta, Equipo
 from app.models.pricing import (
     TipoAlcanceReglaDePrecio, ReglaDePrecio, 
-    ReglaDePrecioAlcance, ReglaDePrecioEntidad
+    ReglaDePrecioAlcance
 )
 from app.models.sales import Venta
 from app.models.points import ReglaConversionPuntos

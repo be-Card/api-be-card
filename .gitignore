@@ -97,6 +97,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -132,6 +134,6 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
-
-.trae/*
-*.md
+.trae/
+.ruff_cache/
+.uv/

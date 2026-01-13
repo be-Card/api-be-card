@@ -136,6 +136,8 @@ class CervezaRead(CervezaBase):
     creado_el: datetime
     creado_por: int
     estilos: List[TipoEstiloCervezaRead] = []
+    precio_actual: Optional[Decimal] = None
+    stock_total: int = 0
 
 
 class CervezaUpdate(SQLModel):

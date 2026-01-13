@@ -60,18 +60,34 @@ def create_user(
     
     # Crear usuario
     db_user = UserService.create_user(
-        session,
+        session=session,
         nombre_usuario=user.nombre_usuario,
         email=user.email,
         password=user.password,
-        nombre=user.nombre,
-        apellido=user.apellido,
+        nombre=user.nombres,
+        apellido=user.apellidos,
         sexo=user.sexo,
-        fecha_nacimiento=user.fecha_nacimiento,
+        fecha_nacimiento=user.fecha_nac,
         telefono=user.telefono
     )
     
-    return db_user
+    # Mapear el modelo a UserRead para asegurar tipos correctos (especialmente sexo)
+    return UserRead(
+        id=db_user.id,
+        id_ext=str(db_user.id_ext),
+        nombre_usuario=db_user.nombre_usuario,
+        email=db_user.email,
+        nombres=db_user.nombres,
+        apellidos=db_user.apellidos,
+        sexo=db_user.sexo.value if getattr(db_user, "sexo", None) else None,
+        fecha_nac=db_user.fecha_nac,
+        telefono=db_user.telefono,
+        activo=db_user.activo,
+        verificado=db_user.verificado,
+        fecha_creacion=db_user.fecha_creacion,
+        ultimo_login=db_user.ultimo_login,
+        intentos_login_fallidos=db_user.intentos_login_fallidos
+    )
 
 
 @router.get("/", response_model=UserListResponse)
@@ -184,63 +200,38 @@ async def update_user(
     current_user: Usuario = Depends(get_current_user),
     db: Session = Depends(get_session)
 ):
-    print(f"DEBUG: Iniciando update_user")
-    print(f"DEBUG: user_id = {user_id}")
-    print(f"DEBUG: user_update = {user_update}")
-    print(f"DEBUG: current_user.id = {current_user.id}")
-    
-    try:
-        # Verificar que el usuario solo pueda editar su propio perfil
-        if current_user.id != user_id:
-            print(f"DEBUG: Error de permisos - current_user.id ({current_user.id}) != user_id ({user_id})")
-            raise HTTPException(status_code=403, detail="No tienes permisos para editar este perfil")
-        
-        print(f"DEBUG: Llamando a UserService.update_user")
-        updated_user = UserService.update_user(
-            session=db,
-            user_id=user_id,
-            nombres=user_update.nombres,
-            apellidos=user_update.apellidos,
-            telefono=user_update.telefono,
-            email=user_update.email,
-            password=user_update.password
-        )
-        
-        print(f"DEBUG: UserService.update_user completado, resultado: {updated_user}")
-        
-        if not updated_user:
-            print(f"DEBUG: Usuario no encontrado")
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        
-        print(f"DEBUG: Creando respuesta UserRead")
-        response = UserRead(
-            id=updated_user.id,
-            nombre_usuario=updated_user.nombre_usuario,
-            email=updated_user.email,
-            nombres=updated_user.nombres,
-            apellidos=updated_user.apellidos,
-            sexo=updated_user.sexo,
-            fecha_nac=updated_user.fecha_nac,
-            telefono=updated_user.telefono,
-            id_ext=str(updated_user.id_ext),
-            activo=updated_user.activo,
-            verificado=updated_user.verificado,
-            fecha_creacion=updated_user.fecha_creacion,
-            ultimo_login=updated_user.ultimo_login,
-            intentos_login_fallidos=updated_user.intentos_login_fallidos
-        )
-        print(f"DEBUG: Respuesta creada exitosamente")
-        return response
-        
-    except HTTPException as he:
-        print(f"DEBUG: HTTPException capturada: {he.detail}")
-        raise
-    except Exception as e:
-        print(f"ERROR: Excepción no controlada: {str(e)}")
-        print(f"ERROR: Tipo de excepción: {type(e)}")
-        import traceback
-        print(f"ERROR: Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="No tienes permisos para editar este perfil")
+
+    updated_user = UserService.update_user(
+        session=db,
+        user_id=user_id,
+        nombres=user_update.nombres,
+        apellidos=user_update.apellidos,
+        telefono=user_update.telefono,
+        email=user_update.email,
+        password=user_update.password,
+    )
+
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    return UserRead(
+        id=updated_user.id,
+        nombre_usuario=updated_user.nombre_usuario,
+        email=updated_user.email,
+        nombres=updated_user.nombres,
+        apellidos=updated_user.apellidos,
+        sexo=updated_user.sexo.value if getattr(updated_user, "sexo", None) else None,
+        fecha_nac=updated_user.fecha_nac,
+        telefono=updated_user.telefono,
+        id_ext=str(updated_user.id_ext),
+        activo=updated_user.activo,
+        verificado=updated_user.verificado,
+        fecha_creacion=updated_user.fecha_creacion,
+        ultimo_login=updated_user.ultimo_login,
+        intentos_login_fallidos=updated_user.intentos_login_fallidos,
+    )
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)
