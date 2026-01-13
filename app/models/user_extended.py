@@ -82,6 +82,7 @@ class Usuario(BaseModel, table=True):
     nombres: str = Field(max_length=100)
     apellidos: str = Field(max_length=100)
     telefono: Optional[str] = Field(max_length=20, default=None)
+    direccion: Optional[str] = Field(default=None)
     sexo: Optional[TipoSexo] = Field(default=None)
     fecha_nac: Optional[date] = Field(default=None)
     

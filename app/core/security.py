@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+from uuid import uuid4
 from jose import JWTError, jwt
 import bcrypt
 import logging
@@ -7,10 +8,6 @@ from app.core.config import settings
 
 # Configurar logging
 logger = logging.getLogger(__name__)
-
-# Configuración JWT
-ALGORITHM = "HS256"
-
 
 def _truncate_password_safely(password: str) -> bytes:
     """
@@ -29,17 +26,21 @@ def _truncate_password_safely(password: str) -> bytes:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verificar contraseña plana contra hash usando bcrypt directamente"""
+    """Verificar contraseña plana contra hash.
+    Soporta hashes bcrypt (preferido) y fallback legado sha256 (semillas antiguas).
+    """
     try:
-        # Truncar contraseña de forma segura a bytes
-        safe_password_bytes = _truncate_password_safely(plain_password)
+        # Verificación con bcrypt si el hash tiene formato bcrypt
+        if isinstance(hashed_password, str) and hashed_password.startswith(("$2b$", "$2a$", "$2y$")):
+            safe_password_bytes = _truncate_password_safely(plain_password)
+            return bcrypt.checkpw(safe_password_bytes, hashed_password.encode('utf-8'))
         
-        # Convertir hash a bytes si es string
-        if isinstance(hashed_password, str):
-            hashed_password_bytes = hashed_password.encode('utf-8')
+        # Fallback legado: hash sha256 hexadecimal de 64 caracteres
+        import re, hashlib
+        if isinstance(hashed_password, str) and re.fullmatch(r"[0-9a-fA-F]{64}", hashed_password):
+            return hashlib.sha256(plain_password.encode('utf-8')).hexdigest() == hashed_password
         
-        # Verificar usando bcrypt directamente
-        return bcrypt.checkpw(safe_password_bytes, hashed_password_bytes)
+        return False
     except Exception as e:
         logger.error(f"Error al verificar contraseña: {e}")
         return False
@@ -65,30 +66,67 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Crear token JWT de acceso"""
     to_encode = data.copy()
+    now = datetime.utcnow()
     
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = now + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+        expire = now + timedelta(minutes=settings.access_token_expire_minutes)
     
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": now,
+            "nbf": now,
+            "type": "access",
+            "jti": str(uuid4()),
+        }
+    )
+    if settings.jwt_issuer:
+        to_encode["iss"] = settings.jwt_issuer
+    if settings.jwt_audience:
+        to_encode["aud"] = settings.jwt_audience
+    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str, expected_type: Optional[str] = None) -> Optional[dict]:
     """Verificar y decodificar token JWT"""
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        decode_kwargs = {}
+        if settings.jwt_issuer:
+            decode_kwargs["issuer"] = settings.jwt_issuer
+        if settings.jwt_audience:
+            decode_kwargs["audience"] = settings.jwt_audience
+
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm], **decode_kwargs)
+        token_type = payload.get("type") or "access"
+        payload["type"] = token_type
+        if expected_type and token_type != expected_type:
+            return None
         return payload
     except JWTError:
         return None
 
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: dict) -> tuple[str, str, datetime]:
     """Crear token de refresh"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
-    to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
-    return encoded_jwt
+    now = datetime.utcnow()
+    expire = now + timedelta(days=settings.refresh_token_expire_days)
+    jti = str(uuid4())
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": now,
+            "nbf": now,
+            "type": "refresh",
+            "jti": jti,
+        }
+    )
+    if settings.jwt_issuer:
+        to_encode["iss"] = settings.jwt_issuer
+    if settings.jwt_audience:
+        to_encode["aud"] = settings.jwt_audience
+    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    return encoded_jwt, jti, expire

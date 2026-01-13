@@ -5,7 +5,7 @@ from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from .base import BaseModel, TipoPrioridadRegla, TipoAlcanceRegla
 
 # Importaciones para evitar referencias circulares
@@ -121,6 +121,12 @@ class ReglaDePrecioCreate(ReglaDePrecioBase):
     equipos_ids: Optional[List[int]] = Field(default=None)
 
 
+class ReglaDePrecioAlcanceRead(SQLModel):
+    tipo_alcance: TipoAlcanceRegla
+    id_entidad: int
+    nombre: Optional[str] = None
+
+
 class ReglaDePrecioRead(ReglaDePrecioBase):
     """Esquema para leer regla de precio"""
     id: int
@@ -128,6 +134,9 @@ class ReglaDePrecioRead(ReglaDePrecioBase):
     creado_por: int
     creado_el: datetime
     vigente: bool = Field(description="Si la regla está vigente actualmente")
+    estado: str = Field(description="Estado calculado: Activa, Programada o Inactiva")
+    alcance: str = Field(description="Descripción del alcance (ej: Todas las cervezas, IPA, etc.)")
+    alcances: List[ReglaDePrecioAlcanceRead] = Field(default_factory=list)
 
 
 class ReglaDePrecioUpdate(SQLModel):
@@ -218,14 +227,17 @@ class CalculadoraPrecios:
             
             reglas_aplicadas.append(regla.nombre)
         
-        descuento = precio_base - precio_final if precio_final < precio_base else None
+        q = Decimal("0.01")
+        precio_base_out = precio_base.quantize(q, rounding=ROUND_HALF_UP)
+        precio_final_out = precio_final.quantize(q, rounding=ROUND_HALF_UP)
+        descuento = precio_base_out - precio_final_out if precio_final_out < precio_base_out else None
         
         return CalculoPrecio(
-            precio_base=precio_base,
-            precio_final=precio_final,
+            precio_base=precio_base_out,
+            precio_final=precio_final_out,
             reglas_aplicadas=reglas_aplicadas,
             multiplicador_total=multiplicador_total,
-            descuento_aplicado=descuento
+            descuento_aplicado=descuento.quantize(q, rounding=ROUND_HALF_UP) if descuento is not None else None
         )
     
     @staticmethod

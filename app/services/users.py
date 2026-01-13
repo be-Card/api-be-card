@@ -36,7 +36,7 @@ class UserService:
         nombre: str,
         apellido: str,
         sexo: str,
-        fecha_nacimiento: datetime,
+        fecha_nacimiento: date,
         telefono: Optional[str] = None,
         nivel_id: int = 1  # Nivel básico por defecto
     ) -> Usuario:
@@ -58,19 +58,22 @@ class UserService:
         Returns:
             Usuario creado
         """
+        # Normalizar email a lowercase para evitar duplicados por case
+        email_normalized = email.lower().strip()
+
         # Hash de la contraseña
         password_hash = get_password_hash(password)
-        
+
         # Generar código de cliente único
         codigo_cliente = UserService.generate_codigo_cliente()
         while UserService.get_customer_by_codigo(session, codigo_cliente):
             codigo_cliente = UserService.generate_codigo_cliente()
-        
+
         # Crear usuario
         db_user = Usuario(
-            nombre_usuario=nombre_usuario,
+            nombre_usuario=nombre_usuario.strip(),
             codigo_cliente=codigo_cliente,
-            email=email,
+            email=email_normalized,
             password_hash=password_hash,
             password_salt="",  # Ya incluido en el hash con bcrypt
             nombres=nombre,
@@ -114,8 +117,9 @@ class UserService:
     
     @staticmethod
     def get_user_by_email(session: Session, email: str) -> Optional[Usuario]:
-        """Obtener usuario por email"""
-        statement = select(Usuario).where(Usuario.email == email)
+        """Obtener usuario por email (case-insensitive)"""
+        email_normalized = email.lower().strip()
+        statement = select(Usuario).where(Usuario.email == email_normalized)
         return session.exec(statement).first()
     
     @staticmethod
