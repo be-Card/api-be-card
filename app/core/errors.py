@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
@@ -46,7 +47,7 @@ def validation_exception_handler(request: Request, exc: RequestValidationError) 
     return JSONResponse(
         status_code=422,
         content={
-            "detail": exc.errors(),
+            "detail": jsonable_encoder(exc.errors()),
             "code": "VALIDATION_ERROR",
             "request_id": _get_request_id(request),
         },

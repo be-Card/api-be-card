@@ -55,3 +55,43 @@ def test_register_requires_email_verification_to_login(client, db_session: Sessi
     login_after = client.post("/api/v1/auth/login-json", json={"email": "newuser@example.com", "password": password})
     assert login_after.status_code == 200
 
+
+def test_register_accepts_fecha_nacimiento_and_sexo_labels(client, db_session: Session):
+    _seed_minimal_auth_data(db_session)
+
+    password = "StrongPass1!"
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "nombre_usuario": "mlgarcia",
+            "email": "matiasgarcia444@gmail.com",
+            "password": password,
+            "nombres": "Matias Luciano",
+            "apellidos": "Garcia",
+            "sexo": "MASCULINO",
+            "fecha_nacimiento": "1994-11-24T00:00:00.000Z",
+            "telefono": "+543625293513",
+        },
+    )
+    assert register.status_code == 201
+    data = register.json()
+    assert data["user"]["sexo"] == "M"
+
+
+def test_register_invalid_sexo_returns_422(client, db_session: Session):
+    _seed_minimal_auth_data(db_session)
+
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "nombre_usuario": "badsexo",
+            "email": "badsexo@example.com",
+            "password": "StrongPass1!",
+            "nombres": "Bad",
+            "apellidos": "Sexo",
+            "sexo": "OTRO",
+            "fecha_nac": date(1990, 1, 1).isoformat(),
+        },
+    )
+    assert register.status_code == 422
+

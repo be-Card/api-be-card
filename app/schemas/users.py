@@ -1,7 +1,7 @@
 """
 Esquemas Pydantic para usuarios (API)
 """
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, AliasChoices
 from typing import Optional, List
 from datetime import datetime, date
 import re
@@ -38,8 +38,42 @@ class UserBase(BaseModel):
     nombres: str = Field(max_length=50)  # Changed from 'nombre' to 'nombres' to match database
     apellidos: str = Field(max_length=50)  # Changed from 'apellido' to 'apellidos' to match database
     sexo: Optional[str] = Field(default=None)  # Made optional to handle None values from database
-    fecha_nac: Optional[date] = Field(default=None)  # Made optional to match database model
+    fecha_nac: Optional[date] = Field(
+        default=None,
+        validation_alias=AliasChoices("fecha_nac", "fecha_nacimiento"),
+    )
     telefono: Optional[str] = Field(default=None, max_length=20)
+
+    @field_validator("sexo", mode="before")
+    @classmethod
+    def normalize_sexo(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            value = v.strip().upper()
+            if value in ("M", "MASCULINO", "MALE"):
+                return "M"
+            if value in ("F", "FEMENINO", "FEMALE"):
+                return "F"
+            raise ValueError("sexo inválido. Usá 'MASCULINO' o 'FEMENINO'")
+        return v
+
+    @field_validator("fecha_nac", mode="before")
+    @classmethod
+    def normalize_fecha_nac(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v.date()
+        if isinstance(v, str):
+            value = v.strip()
+            if "T" in value:
+                try:
+                    value_norm = value.replace("Z", "+00:00")
+                    return datetime.fromisoformat(value_norm).date()
+                except Exception:
+                    return v
+        return v
 
 
 class UserCreate(UserBase):

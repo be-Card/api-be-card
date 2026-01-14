@@ -36,7 +36,7 @@ class UserService:
         nombre: str,
         apellido: str,
         sexo: str,
-        fecha_nacimiento: date,
+        fecha_nacimiento: Optional[date] = None,
         telefono: Optional[str] = None,
         nivel_id: int = 1  # Nivel básico por defecto
     ) -> Usuario:
