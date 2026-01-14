@@ -2,6 +2,9 @@ from datetime import date
 
 from sqlmodel import Session
 
+from app.core.config import settings
+from app.services.email_service import EmailService
+
 
 def _seed_minimal_auth_data(session: Session) -> None:
     from app.models.user_extended import TipoRolUsuario, TipoNivelUsuario
@@ -55,3 +58,100 @@ def test_register_requires_email_verification_to_login(client, db_session: Sessi
     login_after = client.post("/api/v1/auth/login-json", json={"email": "newuser@example.com", "password": password})
     assert login_after.status_code == 200
 
+def test_register_accepts_fecha_nacimiento_and_sexo_labels(client, db_session: Session):
+    _seed_minimal_auth_data(db_session)
+
+    password = "StrongPass1!"
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "nombre_usuario": "mlgarcia",
+            "email": "matiasgarcia444@gmail.com",
+            "password": password,
+            "nombres": "Matias Luciano",
+            "apellidos": "Garcia",
+            "sexo": "MASCULINO",
+            "fecha_nacimiento": "1994-11-24T00:00:00.000Z",
+            "telefono": "+543625293513",
+        },
+    )
+    assert register.status_code == 201
+    data = register.json()
+    assert data["user"]["sexo"] == "M"
+
+
+def test_register_invalid_sexo_returns_422(client, db_session: Session):
+    _seed_minimal_auth_data(db_session)
+
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "nombre_usuario": "badsexo",
+            "email": "badsexo@example.com",
+            "password": "StrongPass1!",
+            "nombres": "Bad",
+            "apellidos": "Sexo",
+            "sexo": "OTRO",
+            "fecha_nac": date(1990, 1, 1).isoformat(),
+        },
+    )
+    assert register.status_code == 422
+
+
+def test_email_service_sends_smtp_with_brevo_style_config(monkeypatch):
+    sent = {}
+
+    class DummySMTP:
+        def __init__(self, host, port, timeout=10):
+            sent["host"] = host
+            sent["port"] = port
+            sent["timeout"] = timeout
+            sent["ehlo_calls"] = 0
+            sent["starttls_called"] = False
+            sent["login"] = None
+            sent["message"] = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def ehlo(self):
+            sent["ehlo_calls"] += 1
+
+        def starttls(self, context=None):
+            sent["starttls_called"] = True
+
+        def login(self, username, password):
+            sent["login"] = (username, password)
+
+        def send_message(self, msg):
+            sent["message"] = msg
+
+    monkeypatch.setattr(settings, "email_backend", "smtp")
+    monkeypatch.setattr(settings, "smtp_host", "smtp-relay.brevo.com")
+    monkeypatch.setattr(settings, "smtp_port", 587)
+    monkeypatch.setattr(settings, "smtp_username", "brevo-user")
+    monkeypatch.setattr(settings, "smtp_password", "brevo-pass")
+    monkeypatch.setattr(settings, "smtp_use_tls", True)
+    monkeypatch.setattr(settings, "smtp_use_ssl", False)
+    monkeypatch.setattr(settings, "smtp_from", None)
+    monkeypatch.setattr(settings, "smtp_from_email", "noreply@becard.com")
+    monkeypatch.setattr(settings, "smtp_from_name", "BeCard")
+
+    monkeypatch.setattr("app.services.email_service.smtplib.SMTP", DummySMTP)
+
+    ok = EmailService.send_email(
+        to_email="dest@example.com",
+        subject="Test",
+        text_body="Hola",
+        html_body="<p>Hola</p>",
+    )
+    assert ok is True
+    assert sent["host"] == "smtp-relay.brevo.com"
+    assert sent["port"] == 587
+    assert sent["starttls_called"] is True
+    assert sent["login"] == ("brevo-user", "brevo-pass")
+    assert sent["message"]["From"] == "BeCard <noreply@becard.com>"
+    assert sent["message"]["To"] == "dest@example.com"

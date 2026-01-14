@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List, Optional, Union, Literal
-from pydantic import field_validator, model_validator
+from pydantic import field_validator, model_validator, Field, AliasChoices
 
 
 class Settings(BaseSettings):
@@ -49,11 +49,34 @@ class Settings(BaseSettings):
 
     # Configuración Email
     email_backend: Literal["disabled", "smtp"] = "disabled"
-    smtp_host: Optional[str] = None
-    smtp_port: int = 587
-    smtp_username: Optional[str] = None
-    smtp_password: Optional[str] = None
-    smtp_from: Optional[str] = None
+    smtp_host: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_HOST", "BREVO_SMTP_HOST"),
+    )
+    smtp_port: int = Field(
+        default=587,
+        validation_alias=AliasChoices("SMTP_PORT", "BREVO_SMTP_PORT"),
+    )
+    smtp_username: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_USERNAME", "BREVO_SMTP_USERNAME"),
+    )
+    smtp_password: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_PASSWORD", "BREVO_SMTP_PASSWORD"),
+    )
+    smtp_from: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_FROM", "BREVO_SMTP_FROM"),
+    )
+    smtp_from_email: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_FROM_EMAIL", "BREVO_SMTP_FROM_EMAIL"),
+    )
+    smtp_from_name: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("SMTP_FROM_NAME", "BREVO_SMTP_FROM_NAME"),
+    )
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
 

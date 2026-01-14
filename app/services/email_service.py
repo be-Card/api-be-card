@@ -12,6 +12,16 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     @staticmethod
+    def _from_header() -> Optional[str]:
+        if settings.smtp_from:
+            return settings.smtp_from
+        if settings.smtp_from_email and settings.smtp_from_name:
+            return f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+        if settings.smtp_from_email:
+            return settings.smtp_from_email
+        return None
+
+    @staticmethod
     def _render_html_template(
         *,
         preheader: str,
@@ -104,11 +114,14 @@ class EmailService:
             return False
         if settings.email_backend != "smtp":
             return False
-        if not settings.smtp_host or not settings.smtp_from:
+        from_header = EmailService._from_header()
+        if not settings.smtp_host or not from_header:
+            if settings.environment == "production":
+                logger.error("SMTP mal configurado (host/from). Email no enviado a %s", to_email)
             return False
 
         msg = EmailMessage()
-        msg["From"] = settings.smtp_from
+        msg["From"] = from_header
         msg["To"] = to_email
         msg["Subject"] = subject
         msg.set_content(text_body)

@@ -4,7 +4,6 @@ Servicio CRUD para usuarios
 from typing import Optional, List
 from sqlmodel import Session, select
 from datetime import datetime, date
-import uuid
 import secrets
 
 from app.models.user_extended import (
@@ -36,7 +35,7 @@ class UserService:
         nombre: str,
         apellido: str,
         sexo: str,
-        fecha_nacimiento: date,
+        fecha_nacimiento: Optional[date] = None,
         telefono: Optional[str] = None,
         nivel_id: int = 1  # Nivel básico por defecto
     ) -> Usuario:
