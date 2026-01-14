@@ -275,7 +275,7 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
         email=db_user.email,
         nombres=db_user.nombres,  # Usar nombres directamente
         apellidos=db_user.apellidos,  # Usar apellidos directamente
-        sexo=db_user.sexo.value if db_user.sexo else "",  # Convertir enum a string
+        sexo=db_user.sexo.value if db_user.sexo else None,  # Convertir enum a string
         fecha_nac=db_user.fecha_nac,  # Usar fecha_nac directamente
         telefono=db_user.telefono,
         activo=db_user.activo,
@@ -287,10 +287,16 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
     
     raw_token, expires_at = EmailVerificationService.create_token(session, db_user, expires_in_minutes=60 * 24)
     verification_link = f"{settings.frontend_url}/verify-email?token={raw_token}"
-    EmailService.send_email_verification(to_email=db_user.email, verification_link=verification_link)
+    email_sent = EmailService.send_email_verification(to_email=db_user.email, verification_link=verification_link)
 
     response = RegisterResponse(
-        message="Cuenta creada. Te enviamos un email para confirmar tu cuenta.",
+        message=(
+            "Te registraste correctamente. Te enviamos un email para confirmar tu cuenta. "
+            "Una vez que lo confirmes, vas a poder iniciar sesión."
+            if email_sent
+            else "Te registraste correctamente. En este momento no pudimos enviarte el email de verificación. "
+                 "Intentá reenviarlo desde el login o probá más tarde."
+        ),
         user=user_read,
     )
     if settings.environment != "production":

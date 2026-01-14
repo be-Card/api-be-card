@@ -48,7 +48,11 @@ class Settings(BaseSettings):
     jwt_audience: Optional[str] = None
 
     # Configuración Email
-    email_backend: Literal["disabled", "smtp"] = "disabled"
+    email_backend: Literal["disabled", "smtp", "brevo"] = "disabled"
+    brevo_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("BREVO_API_KEY", "BREVO_APIKEY"),
+    )
     smtp_host: Optional[str] = Field(
         default=None,
         validation_alias=AliasChoices("SMTP_HOST", "BREVO_SMTP_HOST"),
