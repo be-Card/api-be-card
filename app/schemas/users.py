@@ -75,7 +75,6 @@ class UserBase(BaseModel):
                     return v
         return v
 
-
 class UserCreate(UserBase):
     """Esquema para crear usuario"""
     password: str = Field(min_length=8, description="Contraseña (mínimo 8 caracteres, debe contener mayúscula, minúscula, número y carácter especial)")

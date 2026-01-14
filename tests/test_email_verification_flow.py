@@ -55,7 +55,6 @@ def test_register_requires_email_verification_to_login(client, db_session: Sessi
     login_after = client.post("/api/v1/auth/login-json", json={"email": "newuser@example.com", "password": password})
     assert login_after.status_code == 200
 
-
 def test_register_accepts_fecha_nacimiento_and_sexo_labels(client, db_session: Session):
     _seed_minimal_auth_data(db_session)
 
@@ -94,4 +93,3 @@ def test_register_invalid_sexo_returns_422(client, db_session: Session):
         },
     )
     assert register.status_code == 422
-

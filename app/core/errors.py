@@ -55,6 +55,7 @@ def validation_exception_handler(request: Request, exc: RequestValidationError) 
 
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    headers = {"Retry-After": str(exc.retry_after)} if getattr(exc, "retry_after", None) is not None else None
     return JSONResponse(
         status_code=429,
         content={
@@ -62,7 +63,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSO
             "code": "RATE_LIMIT_EXCEEDED",
             "request_id": _get_request_id(request),
         },
-        headers={"Retry-After": str(getattr(exc, "retry_after", ""))} if getattr(exc, "retry_after", None) else None,
+        headers=headers,
     )
 
 
