@@ -4,6 +4,9 @@ import ssl
 from email.message import EmailMessage
 import html
 from typing import Optional
+import json
+import urllib.request
+import urllib.error
 
 from app.core.config import settings
 
@@ -112,6 +115,54 @@ class EmailService:
     ) -> bool:
         if settings.email_backend == "disabled":
             return False
+        if settings.email_backend == "brevo":
+            from_header = EmailService._from_header()
+            if not settings.brevo_api_key or not from_header:
+                if settings.environment == "production":
+                    logger.error("Brevo mal configurado (api_key/from). Email no enviado a %s", to_email)
+                return False
+
+            from_name = settings.smtp_from_name or "BeCard"
+            from_email = settings.smtp_from_email
+            if not from_email and settings.smtp_from:
+                if "<" in settings.smtp_from and ">" in settings.smtp_from:
+                    from_email = settings.smtp_from.split("<", 1)[1].split(">", 1)[0].strip()
+                else:
+                    from_email = settings.smtp_from.strip()
+            if not from_email:
+                if settings.environment == "production":
+                    logger.error("Brevo mal configurado (from_email). Email no enviado a %s", to_email)
+                return False
+
+            payload = {
+                "sender": {"name": from_name, "email": from_email},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": text_body,
+            }
+            if html_body:
+                payload["htmlContent"] = html_body
+
+            req = urllib.request.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                    "api-key": settings.brevo_api_key,
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return 200 <= resp.status < 300
+            except urllib.error.HTTPError as e:
+                logger.error("Brevo devolvió %s al enviar email a %s", e.code, to_email)
+                return False
+            except Exception:
+                logger.exception("No se pudo enviar email (Brevo) a %s", to_email)
+                return False
+
         if settings.email_backend != "smtp":
             return False
         from_header = EmailService._from_header()

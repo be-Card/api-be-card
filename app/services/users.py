@@ -4,7 +4,6 @@ Servicio CRUD para usuarios
 from typing import Optional, List
 from sqlmodel import Session, select
 from datetime import datetime, date
-import uuid
 import secrets
 
 from app.models.user_extended import (
