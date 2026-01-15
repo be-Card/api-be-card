@@ -29,6 +29,7 @@ class PricingService:
     @staticmethod
     def list_reglas(
         session: Session,
+        tenant_id: int,
         skip: int = 0,
         limit: int = 10,
         search: Optional[str] = None,
@@ -37,7 +38,7 @@ class PricingService:
         order_dir: str = "asc",
     ) -> Tuple[List[ReglaDePrecioRead], int]:
         """Listar reglas de precio con filtros básicos y paginación"""
-        query = select(ReglaDePrecio)
+        query = select(ReglaDePrecio).where(ReglaDePrecio.tenant_id == tenant_id)
 
         if search:
             search_term = f"%{search}%"
@@ -76,15 +77,16 @@ class PricingService:
         return [PricingService._to_read(session, regla) for regla in reglas], total
 
     @staticmethod
-    def get_regla(session: Session, regla_id: int) -> Optional[ReglaDePrecioRead]:
+    def get_regla(session: Session, regla_id: int, *, tenant_id: int) -> Optional[ReglaDePrecioRead]:
         """Obtener una regla por ID"""
-        regla = session.get(ReglaDePrecio, regla_id)
+        regla = session.exec(select(ReglaDePrecio).where(ReglaDePrecio.id == regla_id, ReglaDePrecio.tenant_id == tenant_id)).first()
         return PricingService._to_read(session, regla) if regla else None
 
     @staticmethod
     def create_regla(
         session: Session,
         data: ReglaDePrecioCreate,
+        tenant_id: int,
         user_id: int,
     ) -> ReglaDePrecioRead:
         """Crear una nueva regla de precio y sus alcances"""
@@ -92,6 +94,27 @@ class PricingService:
         # Asegurar fecha fin para evitar errores en esta_vigente
         fecha_inicio = data.fecha_hora_inicio
         fecha_fin = data.fecha_hora_fin or (fecha_inicio + timedelta(days=3650))
+
+        if data.cervezas_ids:
+            found = session.exec(
+                select(Cerveza.id).where(Cerveza.id.in_(data.cervezas_ids), Cerveza.tenant_id == tenant_id)
+            ).all()
+            if len(set(found)) != len(set(data.cervezas_ids)):
+                raise ValueError("Una o más cervezas no pertenecen al tenant")
+        if data.puntos_venta_ids:
+            found = session.exec(
+                select(PuntoVenta.id).where(PuntoVenta.id.in_(data.puntos_venta_ids), PuntoVenta.tenant_id == tenant_id)
+            ).all()
+            if len(set(found)) != len(set(data.puntos_venta_ids)):
+                raise ValueError("Uno o más puntos de venta no pertenecen al tenant")
+        if data.equipos_ids:
+            found = session.exec(
+                select(Equipo.id)
+                .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+                .where(Equipo.id.in_(data.equipos_ids), PuntoVenta.tenant_id == tenant_id)
+            ).all()
+            if len(set(found)) != len(set(data.equipos_ids)):
+                raise ValueError("Uno o más equipos no pertenecen al tenant")
 
         regla = ReglaDePrecio(
             nombre=data.nombre,
@@ -105,6 +128,7 @@ class PricingService:
             dias_semana=data.dias_semana,
             creado_por=user_id,
             creado_el=datetime.utcnow(),
+            tenant_id=tenant_id,
         )
         session.add(regla)
         session.flush()
@@ -143,9 +167,10 @@ class PricingService:
         session: Session,
         regla_id: int,
         data: ReglaDePrecioUpdate,
+        tenant_id: int,
     ) -> Optional[ReglaDePrecioRead]:
         """Actualizar una regla y opcionalmente sus alcances"""
-        regla = session.get(ReglaDePrecio, regla_id)
+        regla = session.exec(select(ReglaDePrecio).where(ReglaDePrecio.id == regla_id, ReglaDePrecio.tenant_id == tenant_id)).first()
         if not regla:
             return None
 
@@ -177,6 +202,11 @@ class PricingService:
                 session.delete(a)
             # Crear nuevos
             if data.cervezas_ids:
+                found = session.exec(
+                    select(Cerveza.id).where(Cerveza.id.in_(data.cervezas_ids), Cerveza.tenant_id == tenant_id)
+                ).all()
+                if len(set(found)) != len(set(data.cervezas_ids)):
+                    raise ValueError("Una o más cervezas no pertenecen al tenant")
                 for cid in data.cervezas_ids:
                     session.add(ReglaDePrecioAlcance(
                         id_regla_de_precio=regla.id,
@@ -184,6 +214,11 @@ class PricingService:
                         id_entidad=cid,
                     ))
             if data.puntos_venta_ids:
+                found = session.exec(
+                    select(PuntoVenta.id).where(PuntoVenta.id.in_(data.puntos_venta_ids), PuntoVenta.tenant_id == tenant_id)
+                ).all()
+                if len(set(found)) != len(set(data.puntos_venta_ids)):
+                    raise ValueError("Uno o más puntos de venta no pertenecen al tenant")
                 for pid in data.puntos_venta_ids:
                     session.add(ReglaDePrecioAlcance(
                         id_regla_de_precio=regla.id,
@@ -191,6 +226,13 @@ class PricingService:
                         id_entidad=pid,
                     ))
             if data.equipos_ids:
+                found = session.exec(
+                    select(Equipo.id)
+                    .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+                    .where(Equipo.id.in_(data.equipos_ids), PuntoVenta.tenant_id == tenant_id)
+                ).all()
+                if len(set(found)) != len(set(data.equipos_ids)):
+                    raise ValueError("Uno o más equipos no pertenecen al tenant")
                 for eid in data.equipos_ids:
                     session.add(ReglaDePrecioAlcance(
                         id_regla_de_precio=regla.id,
@@ -203,9 +245,9 @@ class PricingService:
         return PricingService._to_read(session, regla)
 
     @staticmethod
-    def delete_regla(session: Session, regla_id: int) -> bool:
+    def delete_regla(session: Session, regla_id: int, *, tenant_id: int) -> bool:
         """Inactivar (soft delete) una regla"""
-        regla = session.get(ReglaDePrecio, regla_id)
+        regla = session.exec(select(ReglaDePrecio).where(ReglaDePrecio.id == regla_id, ReglaDePrecio.tenant_id == tenant_id)).first()
         if not regla:
             return False
         regla.esta_activo = False
@@ -216,9 +258,14 @@ class PricingService:
     def calcular_precio(
         session: Session,
         consulta: ConsultaPrecio,
+        tenant_id: int,
     ) -> CalculoPrecio:
         """Calcular precio final para una consulta"""
         # Obtener precio base de la cerveza
+        cerveza = session.exec(select(Cerveza).where(Cerveza.id == consulta.id_cerveza, Cerveza.tenant_id == tenant_id)).first()
+        if cerveza is None:
+            raise ValueError("Cerveza no encontrada")
+
         precio_base: Optional[Decimal] = CervezaService.get_precio_actual(session, consulta.id_cerveza)
         if precio_base is None:
             raise ValueError("Precio base no encontrado para la cerveza")
@@ -226,6 +273,7 @@ class PricingService:
         # Obtener reglas aplicables
         reglas = PricingService._obtener_reglas_aplicables(
             session,
+            tenant_id=tenant_id,
             id_cerveza=consulta.id_cerveza,
             id_equipo=consulta.id_equipo,
             id_punto_venta=consulta.id_punto_venta,
@@ -238,6 +286,7 @@ class PricingService:
     @staticmethod
     def _obtener_reglas_aplicables(
         session: Session,
+        tenant_id: int,
         id_cerveza: Optional[int] = None,
         id_equipo: Optional[int] = None,
         id_punto_venta: Optional[int] = None,
@@ -245,7 +294,7 @@ class PricingService:
         """Obtiene las reglas activas que aplican al contexto. Si no hay alcances, se considera regla global."""
         now = datetime.utcnow()
         reglas_activas = session.exec(
-            select(ReglaDePrecio).where(ReglaDePrecio.esta_activo == True)
+            select(ReglaDePrecio).where(ReglaDePrecio.esta_activo == True, ReglaDePrecio.tenant_id == tenant_id)
         ).all()
 
         aplicables: List[ReglaDePrecio] = []

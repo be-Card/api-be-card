@@ -51,6 +51,8 @@ class UserBase(BaseModel):
             return None
         if isinstance(v, str):
             value = v.strip().upper()
+            if value == "":
+                return None
             if value in ("M", "MASCULINO", "MALE"):
                 return "M"
             if value in ("F", "FEMENINO", "FEMALE"):

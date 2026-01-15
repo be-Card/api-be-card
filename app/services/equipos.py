@@ -35,13 +35,17 @@ class EquipoService:
     """Servicio de negocio para equipos"""
     
     @staticmethod
-    def get_equipos_with_details(session: Session) -> List[EquipoDetailRead]:
+    def get_equipos_with_details(session: Session, tenant_id: Optional[int] = None) -> List[EquipoDetailRead]:
         """Obtener equipos con detalles completos"""
-        
-        equipos = session.exec(
-            select(Equipo)
-            .order_by(Equipo.nombre_equipo, Equipo.id)
-        ).all()
+
+        stmt = select(Equipo).order_by(Equipo.nombre_equipo, Equipo.id)
+        if tenant_id is not None:
+            stmt = (
+                stmt.join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+                .where(PuntoVenta.tenant_id == tenant_id)
+            )
+
+        equipos = session.exec(stmt).all()
         
         equipos_detail = []
         for equipo in equipos:

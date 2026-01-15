@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .user_extended import Usuario
     from .beer import Cerveza
     from .sales_point import PuntoVenta, Equipo
+    from .tenant import Tenant
 
 
 class TipoAlcanceReglaDePrecio(BaseModel, table=True):
@@ -28,6 +29,8 @@ class TipoAlcanceReglaDePrecio(BaseModel, table=True):
 class ReglaDePrecio(BaseModel, table=True):
     """Reglas de precio con diferentes alcances y prioridades"""
     __tablename__ = "reglas_de_precio"
+
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     
     nombre: str = Field(max_length=50)
     descripcion: Optional[str] = Field(default=None, description="Descripción de la regla")
@@ -51,6 +54,7 @@ class ReglaDePrecio(BaseModel, table=True):
     # Relaciones
     # tipo_alcance: Optional[TipoAlcanceReglaDePrecio] = Relationship(back_populates="reglas_precio")  # No hay FK directa
     creador: "Usuario" = Relationship()
+    tenant: Optional["Tenant"] = Relationship()
     alcances: List["ReglaDePrecioAlcance"] = Relationship(back_populates="regla_precio")
     # DEPRECATED: entidades removido - usar alcances
     

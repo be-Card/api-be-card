@@ -8,11 +8,13 @@ from typing import Annotated
 from decimal import Decimal
 
 from app.core.database import get_session
-from app.routers.auth import get_current_active_user, require_admin_or_socio
+from app.core.tenant import get_current_tenant
+from app.routers.auth import get_current_active_user
+from app.models.tenant import Tenant
 from app.models.user_extended import Usuario
 from app.models.sales import Venta
 from app.models.beer import Cerveza
-from app.models.sales_point import Equipo, TipoBarril, TipoEstadoEquipo
+from app.models.sales_point import Equipo, TipoBarril, TipoEstadoEquipo, PuntoVenta
 from app.models.transactions import Pago, TipoEstadoPago
 from app.models.user_extended import TipoMetodoPago
 
@@ -21,46 +23,59 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/kpis")
 def get_dashboard_kpis(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = 30
 ):
     """
     Obtener KPIs principales del dashboard
 
-    Requiere permisos de administrador o socio
+    Requiere usuario autenticado con acceso al tenant
     """
     # Calcular fecha de inicio según días solicitados
     fecha_inicio = datetime.utcnow() - timedelta(days=days)
 
     # Total de ventas en el período
-    total_ventas_statement = select(func.sum(Venta.monto_total)).where(
-        Venta.fecha_hora >= fecha_inicio
+    total_ventas_statement = (
+        select(func.sum(Venta.monto_total))
+        .join(Equipo, Venta.id_equipo == Equipo.id)
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+        .where(Venta.fecha_hora >= fecha_inicio)
+        .where(PuntoVenta.tenant_id == tenant.id)
     )
     total_ventas = session.exec(total_ventas_statement).first() or Decimal('0')
 
     # Número de transacciones en el período
-    num_transacciones_statement = select(func.count(Venta.id)).where(
-        Venta.fecha_hora >= fecha_inicio
+    num_transacciones_statement = (
+        select(func.count(Venta.id))
+        .join(Equipo, Venta.id_equipo == Equipo.id)
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+        .where(Venta.fecha_hora >= fecha_inicio)
+        .where(PuntoVenta.tenant_id == tenant.id)
     )
     num_transacciones = session.exec(num_transacciones_statement).first() or 0
 
     # Total de clientes activos
     clientes_activos_statement = select(func.count(Usuario.id)).where(
         Usuario.activo == True,
-        Usuario.tipo_registro == "usuario"
+        Usuario.tenant_id == tenant.id,
     )
     clientes_activos = session.exec(clientes_activos_statement).first() or 0
 
     # Total de cervezas activas
     cervezas_activas_statement = select(func.count(Cerveza.id)).where(
-        Cerveza.activo == True
+        Cerveza.activo == True,
+        Cerveza.tenant_id == tenant.id,
     )
     cervezas_activas = session.exec(cervezas_activas_statement).first() or 0
 
     # Equipos activos
-    equipos_activos_statement = select(func.count(Equipo.id)).where(
-        Equipo.id_estado_equipo.in_([1, 2])  # Estados activos
+    equipos_activos_statement = (
+        select(func.count(Equipo.id))
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+        .where(PuntoVenta.tenant_id == tenant.id)
+        .where(Equipo.id_estado_equipo.in_([1, 2]))
     )
     equipos_activos = session.exec(equipos_activos_statement).first() or 0
 
@@ -76,6 +91,12 @@ def get_dashboard_kpis(
     total_ventas_anterior_statement = select(func.sum(Venta.monto_total)).where(
         Venta.fecha_hora >= fecha_inicio_anterior,
         Venta.fecha_hora < fecha_inicio
+    )
+    total_ventas_anterior_statement = (
+        total_ventas_anterior_statement
+        .join(Equipo, Venta.id_equipo == Equipo.id)
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+        .where(PuntoVenta.tenant_id == tenant.id)
     )
     total_ventas_anterior = session.exec(total_ventas_anterior_statement).first() or Decimal('0')
 
@@ -99,14 +120,15 @@ def get_dashboard_kpis(
 
 @router.get("/ventas-por-dia")
 def get_ventas_por_dia(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = 30
 ):
     """
     Obtener ventas agrupadas por día para gráficos
 
-    Requiere permisos de administrador o socio
+    Requiere usuario autenticado con acceso al tenant
     """
     fecha_inicio = datetime.utcnow() - timedelta(days=days)
 
@@ -116,8 +138,13 @@ def get_ventas_por_dia(
         cast(Venta.fecha_hora, Date).label("fecha"),
         func.sum(Venta.monto_total).label("total"),
         func.count(Venta.id).label("cantidad")
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
     ).where(
-        Venta.fecha_hora >= fecha_inicio
+        Venta.fecha_hora >= fecha_inicio,
+        PuntoVenta.tenant_id == tenant.id,
     ).group_by("fecha").order_by("fecha")
 
     result = session.exec(ventas_statement).all()
@@ -137,7 +164,8 @@ def get_ventas_por_dia(
 
 @router.get("/cervezas-populares")
 def get_cervezas_populares(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = 30,
     limit: int = 10
@@ -145,7 +173,7 @@ def get_cervezas_populares(
     """
     Obtener las cervezas más vendidas en el período
 
-    Requiere permisos de administrador o socio
+    Requiere usuario autenticado con acceso al tenant
     """
     fecha_inicio = datetime.utcnow() - timedelta(days=days)
 
@@ -158,8 +186,14 @@ def get_cervezas_populares(
         func.count(Venta.id).label("num_ventas")
     ).join(
         Venta, Venta.id_cerveza == Cerveza.id
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
     ).where(
-        Venta.fecha_hora >= fecha_inicio
+        Venta.fecha_hora >= fecha_inicio,
+        PuntoVenta.tenant_id == tenant.id,
+        Cerveza.tenant_id == tenant.id,
     ).group_by(
         Cerveza.id, Cerveza.nombre, Cerveza.tipo
     ).order_by(
@@ -185,7 +219,8 @@ def get_cervezas_populares(
 
 @router.get("/clientes-top")
 def get_top_clientes(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = 30,
     limit: int = 10
@@ -193,7 +228,7 @@ def get_top_clientes(
     """
     Obtener los clientes con mayor consumo en el período
 
-    Requiere permisos de administrador o socio
+    Requiere usuario autenticado con acceso al tenant
     """
     fecha_inicio = datetime.utcnow() - timedelta(days=days)
 
@@ -207,8 +242,13 @@ def get_top_clientes(
         func.count(Venta.id).label("num_compras")
     ).join(
         Venta, Venta.id_usuario == Usuario.id
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
     ).where(
-        Venta.fecha_hora >= fecha_inicio
+        Venta.fecha_hora >= fecha_inicio,
+        PuntoVenta.tenant_id == tenant.id,
     ).group_by(
         Usuario.id, Usuario.nombres, Usuario.apellidos, Usuario.email, Usuario.codigo_cliente
     ).order_by(
@@ -235,13 +275,14 @@ def get_top_clientes(
 
 @router.get("/resumen-equipos")
 def get_resumen_equipos(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session)
 ):
     """
     Obtener resumen del estado de los equipos
 
-    Requiere permisos de administrador o socio
+    Requiere usuario autenticado con acceso al tenant
     """
     # Contar equipos por estado
     from app.models.sales_point import TipoEstadoEquipo
@@ -251,6 +292,10 @@ def get_resumen_equipos(
         func.count(Equipo.id).label("cantidad")
     ).join(
         Equipo, Equipo.id_estado_equipo == TipoEstadoEquipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
+    ).where(
+        PuntoVenta.tenant_id == tenant.id
     ).group_by(
         TipoEstadoEquipo.id, TipoEstadoEquipo.estado
     )
@@ -274,7 +319,8 @@ def get_resumen_equipos(
 
 @router.get("/kpis-dia")
 def get_dashboard_kpis_dia(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
 ):
     now = datetime.utcnow()
@@ -284,24 +330,48 @@ def get_dashboard_kpis_dia(
     ayer_fin = hoy_inicio
 
     def _sum_monto(start: datetime, end: datetime) -> float:
-        stmt = select(func.sum(Venta.monto_total)).where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+        stmt = (
+            select(func.sum(Venta.monto_total))
+            .join(Equipo, Venta.id_equipo == Equipo.id)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+            .where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+            .where(PuntoVenta.tenant_id == tenant.id)
+        )
         value = session.exec(stmt).first() or Decimal("0")
         return float(value)
 
     def _count_transacciones(start: datetime, end: datetime) -> int:
-        stmt = select(func.count(Venta.id)).where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+        stmt = (
+            select(func.count(Venta.id))
+            .join(Equipo, Venta.id_equipo == Equipo.id)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+            .where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+            .where(PuntoVenta.tenant_id == tenant.id)
+        )
         return session.exec(stmt).first() or 0
 
     def _sum_litros(start: datetime, end: datetime) -> float:
-        stmt = select(func.sum(Venta.cantidad_ml)).where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+        stmt = (
+            select(func.sum(Venta.cantidad_ml))
+            .join(Equipo, Venta.id_equipo == Equipo.id)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+            .where(Venta.fecha_hora >= start, Venta.fecha_hora < end)
+            .where(PuntoVenta.tenant_id == tenant.id)
+        )
         value = session.exec(stmt).first() or 0
         return float(value) / 1000.0
 
     def _count_clientes_unicos(start: datetime, end: datetime) -> int:
-        stmt = select(func.count(func.distinct(Venta.id_usuario))).where(
-            Venta.fecha_hora >= start,
-            Venta.fecha_hora < end,
-            Venta.id_usuario != None,
+        stmt = (
+            select(func.count(func.distinct(Venta.id_usuario)))
+            .join(Equipo, Venta.id_equipo == Equipo.id)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+            .where(
+                Venta.fecha_hora >= start,
+                Venta.fecha_hora < end,
+                Venta.id_usuario != None,
+                PuntoVenta.tenant_id == tenant.id,
+            )
         )
         return session.exec(stmt).first() or 0
 
@@ -336,7 +406,8 @@ def get_dashboard_kpis_dia(
 
 @router.get("/distribucion-estilo")
 def get_distribucion_por_estilo(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = 30,
 ):
@@ -348,7 +419,9 @@ def get_distribucion_por_estilo(
             func.sum(Venta.cantidad_ml).label("total_ml"),
         )
         .join(Venta, Venta.id_cerveza == Cerveza.id)
-        .where(Venta.fecha_hora >= fecha_inicio)
+        .join(Equipo, Venta.id_equipo == Equipo.id)
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
+        .where(Venta.fecha_hora >= fecha_inicio, PuntoVenta.tenant_id == tenant.id, Cerveza.tenant_id == tenant.id)
         .group_by(Cerveza.tipo)
         .order_by(func.sum(Venta.cantidad_ml).desc())
     )
@@ -372,7 +445,8 @@ def get_distribucion_por_estilo(
 
 @router.get("/canillas")
 def get_canillas(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     limit: int = 6,
 ):
@@ -385,9 +459,11 @@ def get_canillas(
             Cerveza.nombre,
             TipoEstadoEquipo.permite_ventas,
         )
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
         .join(TipoBarril, TipoBarril.id == Equipo.id_barril)
         .join(TipoEstadoEquipo, TipoEstadoEquipo.id == Equipo.id_estado_equipo)
         .join(Cerveza, Cerveza.id == Equipo.id_cerveza, isouter=True)
+        .where(PuntoVenta.tenant_id == tenant.id)
         .order_by(Equipo.id.asc())
         .limit(limit)
     )
@@ -423,7 +499,8 @@ def get_canillas(
 
 @router.get("/metodos-pago-hoy")
 def get_metodos_pago_hoy(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
 ):
     now = datetime.utcnow()
@@ -435,11 +512,15 @@ def get_metodos_pago_hoy(
             TipoMetodoPago.metodo_pago,
             func.sum(Pago.monto).label("monto"),
         )
+        .join(Venta, (Venta.id == Pago.id_venta) & (Venta.fecha_hora == Pago.fecha_venta))
+        .join(Equipo, Venta.id_equipo == Equipo.id)
+        .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
         .join(TipoMetodoPago, TipoMetodoPago.id == Pago.id_metodo_pago)
         .where(
             Pago.fecha_pago >= inicio,
             Pago.fecha_pago < fin,
             Pago.estado == TipoEstadoPago.APROBADO,
+            PuntoVenta.tenant_id == tenant.id,
         )
         .group_by(TipoMetodoPago.metodo_pago)
         .order_by(func.sum(Pago.monto).desc())

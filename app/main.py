@@ -12,7 +12,7 @@ from app.core.errors import (
 )
 from app.core.rate_limit import limiter
 from app.core.request_id import RequestIdMiddleware
-from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile
+from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile, tenants, admin
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -59,6 +59,8 @@ app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(settings.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(profile.router, prefix="/api/v1")
+app.include_router(tenants.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.on_event("startup")
@@ -66,6 +68,13 @@ def on_startup():
     """Eventos que se ejecutan al iniciar la aplicación"""
     if app_settings.auto_create_db or app_settings.environment in ("development", "test"):
         create_db_and_tables()
+        if app_settings.subscription_sweep_on_startup:
+            from sqlmodel import Session
+            from app.core.database import engine
+            from app.services.tenants import TenantService
+
+            with Session(engine) as session:
+                TenantService.sweep_expired_subscriptions(session)
 
 
 @app.get("/")

@@ -32,6 +32,7 @@ class ClientService:
     @staticmethod
     def get_clients_paginated(
         session: Session,
+        tenant_id: int,
         page: int = 1,
         limit: int = 20,
         search: Optional[str] = None,
@@ -75,6 +76,7 @@ class ClientService:
             .outerjoin(UsuarioNivel, Usuario.id == UsuarioNivel.id_usuario)
             .outerjoin(TipoNivelUsuario, UsuarioNivel.id_nivel == TipoNivelUsuario.id)
             .outerjoin(stats_subquery, Usuario.id == stats_subquery.c.id_usuario)
+            .where(Usuario.tenant_id == tenant_id)
         )
         
         # Aplicar filtros
@@ -154,7 +156,7 @@ class ClientService:
         }
     
     @staticmethod
-    def get_client_detail(session: Session, client_id: str) -> Optional[Dict[str, Any]]:
+    def get_client_detail(session: Session, client_id: str, *, tenant_id: int) -> Optional[Dict[str, Any]]:
         """
         Obtener detalle completo de un cliente por su id_ext usando ORM
         """
@@ -168,7 +170,7 @@ class ClientService:
                 selectinload(Usuario.canjes),
                 selectinload(Usuario.metodos_pago).selectinload(UsuarioMetodoPago.metodo_pago)
             )
-            .where(Usuario.id_ext == client_id)
+            .where(Usuario.id_ext == client_id, Usuario.tenant_id == tenant_id)
         )
         
         result = session.exec(query)
@@ -495,8 +497,8 @@ class ClientService:
         }
 
     @staticmethod
-    def redeem_reward(session: Session, client_id_ext: str, premio_id: int) -> dict:
-        user = session.exec(select(Usuario).where(Usuario.id_ext == client_id_ext)).first()
+    def redeem_reward(session: Session, client_id_ext: str, premio_id: int, *, tenant_id: int) -> dict:
+        user = session.exec(select(Usuario).where(Usuario.id_ext == client_id_ext, Usuario.tenant_id == tenant_id)).first()
         if not user:
             raise ValueError("Cliente no encontrado")
 
@@ -563,11 +565,16 @@ class ClientService:
         )
     
     @staticmethod
-    def update_client(session: Session, client_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_client(
+        session: Session,
+        client_id: str,
+        update_data: Dict[str, Any],
+        tenant_id: int,
+    ) -> Optional[Dict[str, Any]]:
         """Actualizar información del cliente usando ORM"""
         
         # Buscar usuario
-        query = select(Usuario).where(Usuario.id_ext == client_id)
+        query = select(Usuario).where(Usuario.id_ext == client_id, Usuario.tenant_id == tenant_id)
         result = session.exec(query)
         user = result.first()
         
@@ -606,14 +613,19 @@ class ClientService:
         session.refresh(user)
         
         # Retornar cliente actualizado
-        return ClientService.get_client_detail(session, client_id)
+        return ClientService.get_client_detail(session, client_id, tenant_id=tenant_id)
     
     @staticmethod
-    def toggle_client_status(session: Session, client_id: str, reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def toggle_client_status(
+        session: Session,
+        client_id: str,
+        tenant_id: int,
+        reason: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Alternar estado activo/inactivo del cliente usando ORM"""
         
         # Buscar usuario
-        query = select(Usuario).where(Usuario.id_ext == client_id)
+        query = select(Usuario).where(Usuario.id_ext == client_id, Usuario.tenant_id == tenant_id)
         result = session.exec(query)
         user = result.first()
         
@@ -632,7 +644,7 @@ class ClientService:
         session.commit()
         
         # Obtener datos completos del cliente actualizado
-        client_detail = ClientService.get_client_detail(session, client_id)
+        client_detail = ClientService.get_client_detail(session, client_id, tenant_id=tenant_id)
         
         return {
             'client': client_detail['client'] if client_detail else None,
@@ -645,6 +657,8 @@ class ClientService:
     def create_client(
         session: Session,
         *,
+        tenant_id: int,
+        creado_por: int,
         name: str,
         email: str,
         phone: Optional[str],
@@ -678,6 +692,8 @@ class ClientService:
             sexo=sexo,
             fecha_nacimiento=birth_date,
             telefono=phone,
+            tenant_id=tenant_id,
+            registrado_por=creado_por,
         )
 
         if address is not None:
@@ -686,7 +702,7 @@ class ClientService:
             session.commit()
             session.refresh(user)
 
-        result = ClientService.get_client_detail(session, str(user.id_ext))
+        result = ClientService.get_client_detail(session, str(user.id_ext), tenant_id=tenant_id)
         if not result:
             raise ValueError("No se pudo crear el cliente")
         return result

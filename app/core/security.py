@@ -60,7 +60,7 @@ def get_password_hash(password: str) -> str:
         return hashed.decode('utf-8')
     except Exception as e:
         logger.error(f"Error al generar hash de contraseña: {e}")
-        raise ValueError(f"No se pudo generar hash de contraseña: {str(e)}")
+        raise ValueError("No se pudo generar hash de contraseña")
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

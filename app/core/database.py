@@ -14,6 +14,7 @@ from app.models.sales_point import (
     TipoBarrilRead, TipoEstadoEquipoRead, PuntoVentaRead,
     TipoBarrilCreate, TipoEstadoEquipoCreate, PuntoVentaCreate, PuntoVentaUpdate
 )
+from app.models.tenant import Tenant, TenantUser, TenantPayment
 # Importar otros modelos disponibles
 from app.models.refresh_token import RefreshToken
 from app.models.password_reset_token import PasswordResetToken

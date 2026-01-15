@@ -119,6 +119,8 @@ class Usuario(BaseModel, table=True):
         default=None,
         description="ID del socio que registró este guest"
     )
+
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     
     # Relaciones
     roles: List["UsuarioRol"] = Relationship(

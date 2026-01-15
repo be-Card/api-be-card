@@ -9,12 +9,20 @@ from decimal import Decimal
 from app.routers import pricing as pricing_router
 from app.core.database import get_session
 from app.routers.auth import require_admin, require_admin_or_socio, get_current_user
+from app.core.tenant import get_current_tenant
 from app.models import Cerveza, PrecioCerveza, Usuario
 
 
 class DummyUser:
     def __init__(self, id: int = 1):
         self.id = id
+        self.activo = True
+
+
+class DummyTenant:
+    def __init__(self, id: int = 1, slug: str = "tenant-test"):
+        self.id = id
+        self.slug = slug
         self.activo = True
 
 
@@ -45,6 +53,7 @@ def app(engine):
     app.dependency_overrides[require_admin] = lambda: DummyUser(1)
     app.dependency_overrides[require_admin_or_socio] = lambda: DummyUser(1)
     app.dependency_overrides[get_current_user] = lambda: DummyUser(1)
+    app.dependency_overrides[get_current_tenant] = lambda: DummyTenant(1, "tenant-test")
 
     return app
 
@@ -57,6 +66,8 @@ def client(app):
 def seed_beer_with_price(engine) -> int:
     """Create a beer and a current price in the test DB, return beer id"""
     with Session(engine) as session:
+        from app.models.tenant import Tenant
+
         # Ensure a user exists if SQLite enforces foreign keys (usually off)
         # Minimal Usuario row; fill only required fields if needed
         user = Usuario(
@@ -67,12 +78,16 @@ def seed_beer_with_price(engine) -> int:
         session.add(user)
         session.flush()
 
+        session.add(Tenant(id=1, nombre="Tenant Test", slug="tenant-test", activo=True))
+        session.flush()
+
         cerveza = Cerveza(
             nombre="Test IPA",
             tipo="IPA",
             proveedor="Acme",
             activo=True,
             destacado=False,
+            tenant_id=1,
         )
         session.add(cerveza)
         session.flush()
@@ -143,4 +158,4 @@ def test_calcular_precio_not_found_base_price(client):
     }
     resp = client.post("/api/v1/pricing/calcular", json=calc_payload)
     assert resp.status_code == 404
-    assert "Precio base no encontrado" in resp.json()["detail"]
+    assert resp.json()["detail"] == "No se encontró un precio aplicable"
