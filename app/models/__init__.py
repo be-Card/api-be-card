@@ -33,6 +33,9 @@ from .user_extended import (
     ReferidoCreate
 )
 
+# Modelos multi-tenant
+from .tenant import Tenant, TenantUser
+
 # Modelos de cervezas
 from .beer import (
     TipoEstiloCerveza,

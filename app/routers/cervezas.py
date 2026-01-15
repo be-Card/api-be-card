@@ -1,23 +1,26 @@
 """
 Router para endpoints de cervezas
 """
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, SQLModel
 from typing import List, Optional
 from decimal import Decimal
-from datetime import datetime
 
 from ..core.database import get_session
-from .auth import get_current_user
+from ..core.tenant import get_current_tenant
+from .auth import get_current_active_user
+from ..models.tenant import Tenant
 from ..models.user_extended import Usuario
 from ..models.beer import (
     CervezaCreate, CervezaRead, CervezaUpdate,
-    TipoEstiloCervezaRead, PrecioCervezaCreate, PrecioCervezaRead
+    TipoEstiloCervezaCreate, TipoEstiloCervezaRead, PrecioCervezaCreate, PrecioCervezaRead
 )
 from ..services.cervezas import CervezaService
 
 
 router = APIRouter(prefix="/cervezas", tags=["cervezas"])
+logger = logging.getLogger(__name__)
 
 
 class CervezaResponse(SQLModel):
@@ -44,11 +47,53 @@ class CervezaUpdateRequest(CervezaUpdate):
 # Endpoints de soporte (deben ir antes de las rutas con parámetros dinámicos)
 
 @router.get("/estilos", response_model=List[TipoEstiloCervezaRead])
-def get_estilos_cerveza(session: Session = Depends(get_session)):
-    """Obtener todos los estilos de cerveza"""
-    return CervezaService.get_estilos_cerveza(session)
+def get_estilos_cerveza(
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
+    session: Session = Depends(get_session),
+):
+    _ = current_user
+    return CervezaService.get_estilos_cerveza_for_tenant(session, tenant_id=tenant.id)
 
 
+@router.post("/estilos", response_model=TipoEstiloCervezaRead, status_code=201)
+def create_estilo_cerveza(
+    payload: TipoEstiloCervezaCreate,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
+    session: Session = Depends(get_session),
+):
+    _ = current_user
+    try:
+        return CervezaService.create_estilo_cerveza_for_tenant(
+            session,
+            tenant_id=tenant.id,
+            estilo=str(payload.estilo or ""),
+            descripcion=payload.descripcion,
+            origen=payload.origen,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/estilos/{estilo_id}", status_code=204)
+def delete_estilo_cerveza(
+    estilo_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
+    session: Session = Depends(get_session),
+):
+    _ = current_user
+    try:
+        CervezaService.delete_estilo_cerveza_for_tenant(session, tenant_id=tenant.id, estilo_id=estilo_id)
+    except ValueError as e:
+        msg = str(e)
+        if "no encontrado" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+
+
+@router.get("", response_model=CervezaResponse)
 @router.get("/", response_model=CervezaResponse)
 def get_cervezas(
     page: int = Query(1, ge=1, description="Número de página"),
@@ -59,7 +104,9 @@ def get_cervezas(
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
     destacado: Optional[bool] = Query(None, description="Filtrar por destacado"),
     order_dir: str = Query("asc", description="Dirección de orden (asc/desc)"),
-    session: Session = Depends(get_session)
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
+    session: Session = Depends(get_session),
 ):
     """Obtener lista de cervezas con filtros y paginación"""
     
@@ -68,6 +115,7 @@ def get_cervezas(
     
     cervezas, total = CervezaService.get_cervezas_with_filters(
         session=session,
+        tenant_id=tenant.id,
         skip=skip,
         limit=effective_size,
         search=search,
@@ -91,18 +139,20 @@ def get_cervezas(
 @router.get("/{cerveza_id}", response_model=CervezaRead)
 def get_cerveza(
     cerveza_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
     session: Session = Depends(get_session)
 ):
     """Obtener cerveza por ID"""
     
-    cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id)
+    cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id, tenant_id=tenant.id)
     if not cerveza:
         raise HTTPException(status_code=404, detail="Cerveza no encontrada")
     
     # Agregar datos adicionales
     cerveza_dict = cerveza.model_dump()
     cerveza_dict["precio_actual"] = CervezaService.get_precio_actual(session, cerveza_id)
-    cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza_id)
+    cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza_id, tenant_id=tenant.id)
     
     return cerveza_dict
 
@@ -111,7 +161,8 @@ def get_cerveza(
 def create_cerveza(
     cerveza_data: CervezaCreateRequest,
     session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user)
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
 ):
     """Crear nueva cerveza"""
     
@@ -123,6 +174,7 @@ def create_cerveza(
         cerveza = CervezaService.create_cerveza(
             session=session,
             cerveza_data=cerveza_create,
+            tenant_id=tenant.id,
             user_id=current_user.id,
             precio_inicial=precio_inicial
         )
@@ -130,12 +182,13 @@ def create_cerveza(
         # Agregar datos adicionales
         cerveza_dict = cerveza.model_dump()
         cerveza_dict["precio_actual"] = CervezaService.get_precio_actual(session, cerveza.id)
-        cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza.id)
+        cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza.id, tenant_id=tenant.id)
         
         return cerveza_dict
         
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.exception("Error creando cerveza", extra={"user_id": current_user.id})
+        raise HTTPException(status_code=400, detail="No se pudo crear la cerveza")
 
 
 @router.put("/{cerveza_id}", response_model=CervezaRead)
@@ -143,7 +196,8 @@ def update_cerveza(
     cerveza_id: int,
     cerveza_data: CervezaUpdateRequest,
     session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user)
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
 ):
     """Actualizar cerveza"""
     
@@ -159,6 +213,7 @@ def update_cerveza(
             session=session,
             cerveza_id=cerveza_id,
             cerveza_data=cerveza_update,
+            tenant_id=tenant.id,
             user_id=current_user.id,
             precio_nuevo=precio_nuevo,
             motivo_precio=motivo_precio
@@ -170,13 +225,15 @@ def update_cerveza(
         # Agregar datos adicionales
         cerveza_dict = cerveza.model_dump()
         cerveza_dict["precio_actual"] = CervezaService.get_precio_actual(session, cerveza_id)
-        cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza_id)
+        cerveza_dict["stock_total"] = CervezaService.calculate_stock_total(session, cerveza_id, tenant_id=tenant.id)
         
         return cerveza_dict
         
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning("Error validando cerveza", extra={"cerveza_id": cerveza_id, "error": str(e)})
+        raise HTTPException(status_code=400, detail="Datos inválidos")
     except Exception:
+        logger.exception("Error actualizando cerveza", extra={"cerveza_id": cerveza_id, "user_id": current_user.id})
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -184,11 +241,12 @@ def update_cerveza(
 def delete_cerveza(
     cerveza_id: int,
     session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user)
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
 ):
     """Eliminar cerveza (soft delete)"""
     
-    success = CervezaService.delete_cerveza(session, cerveza_id)
+    success = CervezaService.delete_cerveza(session, cerveza_id, tenant_id=tenant.id)
     if not success:
         raise HTTPException(status_code=404, detail="Cerveza no encontrada")
 
@@ -196,10 +254,16 @@ def delete_cerveza(
 @router.get("/{cerveza_id}/precio-actual", response_model=dict)
 def get_precio_actual(
     cerveza_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
     session: Session = Depends(get_session)
 ):
     """Obtener precio actual de una cerveza"""
     
+    cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id, tenant_id=tenant.id)
+    if not cerveza:
+        raise HTTPException(status_code=404, detail="Cerveza no encontrada")
+
     precio = CervezaService.get_precio_actual(session, cerveza_id)
     if precio is None:
         raise HTTPException(status_code=404, detail="Precio no encontrado")
@@ -210,11 +274,17 @@ def get_precio_actual(
 @router.get("/{cerveza_id}/stock", response_model=dict)
 def get_stock_cerveza(
     cerveza_id: int,
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
     session: Session = Depends(get_session)
 ):
     """Obtener stock total de una cerveza"""
     
-    stock = CervezaService.calculate_stock_total(session, cerveza_id)
+    cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id, tenant_id=tenant.id)
+    if not cerveza:
+        raise HTTPException(status_code=404, detail="Cerveza no encontrada")
+
+    stock = CervezaService.calculate_stock_total(session, cerveza_id, tenant_id=tenant.id)
     return {"stock_total": stock}
 
 
@@ -223,9 +293,14 @@ def create_precio_cerveza(
     cerveza_id: int,
     precio_data: PrecioCervezaCreate,
     session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user)
+    tenant: Tenant = Depends(get_current_tenant),
+    current_user: Usuario = Depends(get_current_active_user),
 ):
     """Crear nuevo precio para una cerveza"""
+
+    cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id, tenant_id=tenant.id)
+    if not cerveza:
+        raise HTTPException(status_code=404, detail="Cerveza no encontrada")
     
     # Verificar que la cerveza existe
     cerveza = CervezaService.get_cerveza_by_id(session, cerveza_id)

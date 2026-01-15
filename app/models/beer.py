@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .user_extended import Usuario
     from .sales import Venta
     from .sales_point import Equipo
+    from .tenant import Tenant
     # from .pricing import ReglaDePrecioEntidad  # DEPRECATED
 
 
@@ -20,6 +21,7 @@ class TipoEstiloCerveza(BaseModel, table=True):
     """Tipos de estilo de cerveza (IPA, Lager, Stout, etc.)"""
     __tablename__ = "tipos_estilo_cerveza"
     
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     estilo: Optional[str] = Field(max_length=50, default=None, unique=True)
     descripcion: Optional[str] = Field(default=None, description="Descripción del estilo")
     origen: Optional[str] = Field(default=None, max_length=50, description="País/región de origen")
@@ -31,6 +33,8 @@ class TipoEstiloCerveza(BaseModel, table=True):
 class Cerveza(BaseModel, TimestampMixin, table=True):
     """Modelo principal de cerveza"""
     __tablename__ = "cervezas"
+
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     
     nombre: str = Field(max_length=50, unique=True, index=True)
     tipo: str = Field(max_length=50)
@@ -53,6 +57,7 @@ class Cerveza(BaseModel, TimestampMixin, table=True):
     
     # Relaciones
     creador: "Usuario" = Relationship(back_populates="cervezas_creadas")
+    tenant: Optional["Tenant"] = Relationship()
     estilos: List["CervezaEstilo"] = Relationship(back_populates="cerveza")
     precios_historicos: List["PrecioCerveza"] = Relationship(back_populates="cerveza")
     ventas: List["Venta"] = Relationship(back_populates="cerveza")

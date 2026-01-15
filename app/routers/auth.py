@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlmodel import Session
+from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_session
@@ -22,7 +22,7 @@ from app.services.users import UserService
 from app.services.password_reset import PasswordResetService
 from app.services.email_verification import EmailVerificationService
 from app.services.email_service import EmailService
-from app.models.user_extended import Usuario
+from app.models.user_extended import Usuario, UsuarioRol, TipoRolUsuario
 from app.schemas.auth import (
     Token,
     LoginJSONRequest,
@@ -33,7 +33,7 @@ from app.schemas.auth import (
     ResendVerificationRequest,
 )
 from app.schemas.register import RegisterResponse
-from app.schemas.users import UserCreate, UserRead
+from app.schemas.users import UserCreate, UserRead, UserWithRoles, RolRead, TipoRolUsuarioRead
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -141,7 +141,7 @@ def require_admin(
     Raises:
         HTTPException: 403 si el usuario no tiene permisos de administrador
     """
-    admin_roles = ["admin"]
+    admin_roles = ["superadmin", "admin", "administrador"]
     
     if not _check_user_roles(session, current_user.id, admin_roles):
         raise HTTPException(
@@ -149,6 +149,18 @@ def require_admin(
             detail="Se requieren permisos de administrador"
         )
     
+    return current_user
+
+
+def require_superadmin(
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    session: Session = Depends(get_session),
+) -> Usuario:
+    if not _check_user_roles(session, current_user.id, ["superadmin"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren permisos de superadmin",
+        )
     return current_user
 
 
@@ -196,7 +208,7 @@ def require_admin_or_socio(
     Raises:
         HTTPException: 403 si el usuario no tiene ninguno de los roles requeridos
     """
-    allowed_roles = ["admin", "socio"]
+    allowed_roles = ["superadmin", "admin", "administrador", "socio"]
     
     if not _check_user_roles(session, current_user.id, allowed_roles):
         raise HTTPException(
@@ -211,10 +223,10 @@ def require_admin_or_socio(
 @limiter.limit(AUTH_RATE_LIMIT)
 def register_user(request: Request, user: UserCreate, session: Session = Depends(get_session)):
     """
-    Registrar un nuevo usuario (cliente)
+    Registrar un nuevo usuario
     
     Crea automáticamente:
-    - Usuario con rol 'usuario' (cliente)
+    - Usuario con rol configurado para registro (por defecto: administrador)
     - Nivel inicial (Bronce)
     - Código QR para usar en puntos de venta
     """
@@ -245,7 +257,15 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
             apellido=user.apellidos,
             sexo=user.sexo,
             fecha_nacimiento=user.fecha_nac,
-            telefono=user.telefono
+            telefono=user.telefono,
+            activo=False,
+            role_tipo=settings.registration_default_role,
+        )
+    except ValueError:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Configuración de roles inválida"
         )
     except IntegrityError as e:
         session.rollback()
@@ -275,7 +295,7 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
         email=db_user.email,
         nombres=db_user.nombres,  # Usar nombres directamente
         apellidos=db_user.apellidos,  # Usar apellidos directamente
-        sexo=db_user.sexo.value if db_user.sexo else None,  # Convertir enum a string
+        sexo=db_user.sexo.value if getattr(db_user, "sexo", None) else None,
         fecha_nac=db_user.fecha_nac,  # Usar fecha_nac directamente
         telefono=db_user.telefono,
         activo=db_user.activo,
@@ -330,16 +350,16 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not user.activo:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuario inactivo"
-        )
-
     if not user.verificado:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email no verificado"
+        )
+
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta pendiente de habilitación"
         )
     
     # Crear token de acceso
@@ -395,16 +415,16 @@ def login_user_json(
             detail="Email o contraseña incorrectos",
         )
     
-    if not user.activo:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuario inactivo"
-        )
-
     if not user.verificado:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email no verificado"
+        )
+
+    if not user.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta pendiente de habilitación"
         )
     
     # Crear token de acceso
@@ -436,9 +456,10 @@ def login_user_json(
     )
 
 
-@router.get("/me", response_model=UserRead)
+@router.get("/me", response_model=UserWithRoles)
 def read_current_user(
-    current_user: Annotated[Usuario, Depends(get_current_active_user)]
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    session: Session = Depends(get_session),
 ):
     """
     Obtener información del usuario autenticado
@@ -446,22 +467,47 @@ def read_current_user(
     Requiere token JWT válido en el header:
     Authorization: Bearer <token>
     """
-    # Convert Usuario model to UserRead schema with proper field mapping
-    return UserRead(
+    sexo = None
+    raw_sexo = getattr(current_user, "sexo", None)
+    if raw_sexo:
+        sexo = raw_sexo.value if hasattr(raw_sexo, "value") else str(raw_sexo).strip() or None
+
+    role_rows = session.exec(
+        select(UsuarioRol, TipoRolUsuario)
+        .join(TipoRolUsuario, TipoRolUsuario.id == UsuarioRol.id_rol)
+        .where(UsuarioRol.id_usuario == current_user.id)
+        .where(UsuarioRol.fecha_revocacion == None)
+    ).all()
+    roles = [
+        RolRead(
+            id=int(rol.id),
+            tipo_rol_usuario=TipoRolUsuarioRead(
+                id=int(rol.id),
+                nombre=rol.tipo,
+                descripcion=rol.descripcion,
+            ),
+            asignado_el=ur.fecha_asignacion,
+        )
+        for ur, rol in role_rows
+        if rol is not None and rol.id is not None
+    ]
+
+    return UserWithRoles(
         id=current_user.id,
         id_ext=str(current_user.id_ext),  # Convert UUID to string
         nombre_usuario=current_user.nombre_usuario,
         email=current_user.email,
         nombres=current_user.nombres,  # Use correct field name 'nombres'
         apellidos=current_user.apellidos,  # Use correct field name 'apellidos'
-        sexo=current_user.sexo.value if current_user.sexo else "",  # Convert enum to string
+        sexo=sexo,
         fecha_nac=current_user.fecha_nac,  # Use correct field name 'fecha_nac'
         telefono=current_user.telefono,
         activo=current_user.activo,
         verificado=current_user.verificado,
         fecha_creacion=current_user.fecha_creacion,
         ultimo_login=current_user.ultimo_login,
-        intentos_login_fallidos=current_user.intentos_login_fallidos
+        intentos_login_fallidos=current_user.intentos_login_fallidos,
+        roles=roles,
     )
 
 
@@ -581,7 +627,7 @@ def reset_password(
     try:
         PasswordResetService.reset_password(session, body.token, body.new_password)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token inválido o expirado")
     return {"message": "Contraseña actualizada correctamente"}
 
 
@@ -595,7 +641,7 @@ def verify_email(
     try:
         EmailVerificationService.verify_email(session, body.token)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token inválido o expirado")
     return {"message": "Email verificado correctamente. Ya podés iniciar sesión."}
 
 
@@ -608,7 +654,7 @@ def resend_verification_email(
 ):
     email_normalized = body.email.lower().strip()
     user = UserService.get_user_by_email(session, email_normalized)
-    if user and user.activo and not user.verificado:
+    if user and not user.verificado:
         raw_token, _expires_at = EmailVerificationService.create_token(session, user, expires_in_minutes=60 * 24)
         verification_link = f"{settings.frontend_url}/verify-email?token={raw_token}"
         EmailService.send_email_verification(to_email=user.email, verification_link=verification_link)
@@ -620,6 +666,7 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "require_admin",
+    "require_superadmin",
     "require_role",
     "require_socio",
     "require_admin_or_socio"

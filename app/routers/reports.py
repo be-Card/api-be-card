@@ -8,10 +8,13 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from app.core.database import get_session
-from app.routers.auth import require_admin_or_socio
+from app.core.tenant import get_current_tenant
+from app.routers.auth import get_current_active_user
+from app.models.tenant import Tenant
 from app.models.user_extended import Usuario
 from app.models.beer import Cerveza
 from app.models.sales import Venta
+from app.models.sales_point import Equipo, PuntoVenta
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -102,7 +105,8 @@ def _resolve_period(days: int, date_from: Optional[str], date_to: Optional[str])
 
 @router.get("/ventas", response_model=VentasReportResponse)
 def get_reporte_ventas(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = Query(default=30, ge=1, le=365, description="Número de días del reporte"),
     date_from: Optional[str] = Query(default=None),
@@ -126,6 +130,12 @@ def get_reporte_ventas(
     statement = select(Venta).where(
         Venta.fecha_hora >= fecha_inicio,
         Venta.fecha_hora <= fecha_fin
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
+    ).where(
+        PuntoVenta.tenant_id == tenant.id
     ).order_by(Venta.fecha_hora)
 
     ventas = session.exec(statement).all()
@@ -183,7 +193,8 @@ def get_reporte_ventas(
 
 @router.get("/consumo", response_model=ConsumoReportResponse)
 def get_reporte_consumo(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = Query(default=30, ge=1, le=365, description="Número de días del reporte"),
     date_from: Optional[str] = Query(default=None),
@@ -203,6 +214,12 @@ def get_reporte_consumo(
     statement = select(Venta).where(
         Venta.fecha_hora >= fecha_inicio,
         Venta.fecha_hora <= fecha_fin
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
+    ).where(
+        PuntoVenta.tenant_id == tenant.id
     )
 
     ventas = session.exec(statement).all()
@@ -215,7 +232,7 @@ def get_reporte_consumo(
         # Usar la información directa de la venta
         if venta.id_cerveza is not None:
             cerveza = session.get(Cerveza, venta.id_cerveza)
-            if cerveza:
+            if cerveza and cerveza.tenant_id == tenant.id:
                 estilo = cerveza.tipo or "Otro"
                 litros = venta.cantidad_ml / 1000.0
 
@@ -249,7 +266,8 @@ def get_reporte_consumo(
 
 @router.get("/clientes", response_model=ClientesReportResponse)
 def get_reporte_clientes(
-    current_user: Annotated[Usuario, Depends(require_admin_or_socio)],
+    current_user: Annotated[Usuario, Depends(get_current_active_user)],
+    tenant: Tenant = Depends(get_current_tenant),
     session: Session = Depends(get_session),
     days: int = Query(default=30, ge=1, le=365, description="Número de días del reporte"),
     date_from: Optional[str] = Query(default=None),
@@ -274,6 +292,12 @@ def get_reporte_clientes(
     statement = select(Venta).where(
         Venta.fecha_hora >= fecha_inicio,
         Venta.fecha_hora <= fecha_fin
+    ).join(
+        Equipo, Venta.id_equipo == Equipo.id
+    ).join(
+        PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id
+    ).where(
+        PuntoVenta.tenant_id == tenant.id
     )
 
     ventas = session.exec(statement).all()

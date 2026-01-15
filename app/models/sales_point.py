@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .user_extended import Usuario
     from .beer import Cerveza
     from .sales import Venta
+    from .tenant import Tenant
 
 
 
@@ -53,6 +54,7 @@ class PuntoVenta(BaseModel, TimestampMixin, table=True):
     horario_apertura: Optional[str] = Field(default=None, description="Horario de apertura (TIME)")
     horario_cierre: Optional[str] = Field(default=None, description="Horario de cierre (TIME)")
     id_usuario_socio: Optional[int] = Field(foreign_key="usuarios.id", default=None)
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     activo: bool = Field(default=True, description="Si el punto de venta está activo")
     
     # Relaciones
@@ -60,6 +62,7 @@ class PuntoVenta(BaseModel, TimestampMixin, table=True):
         back_populates="puntos_venta",
         sa_relationship_kwargs={"foreign_keys": "PuntoVenta.id_usuario_socio"}
     )
+    tenant: Optional["Tenant"] = Relationship()
     equipos: List["Equipo"] = Relationship(back_populates="punto_venta")
     # reglas_precio: List["ReglaDePrecioEntidad"] = Relationship(back_populates="punto_venta")  # DEPRECATED
 

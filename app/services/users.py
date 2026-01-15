@@ -37,6 +37,10 @@ class UserService:
         sexo: str,
         fecha_nacimiento: Optional[date] = None,
         telefono: Optional[str] = None,
+        tenant_id: Optional[int] = None,
+        registrado_por: Optional[int] = None,
+        activo: bool = True,
+        role_tipo: str = "usuario",
         nivel_id: int = 1  # Nivel básico por defecto
     ) -> Usuario:
         """
@@ -81,8 +85,10 @@ class UserService:
             fecha_nac=fecha_nacimiento,
             telefono=telefono,
             tipo_registro='app',
-            activo=True,
-            verificado=False
+            activo=bool(activo),
+            verificado=False,
+            tenant_id=tenant_id,
+            registrado_por=registrado_por,
         )
         
         session.add(db_user)
@@ -97,10 +103,15 @@ class UserService:
         )
         session.add(usuario_nivel)
         
-        # Asignar rol de usuario por defecto (id=1 = usuario)
+        role_tipo_normalized = (role_tipo or "usuario").strip().lower()
+        role_id = session.exec(
+            select(TipoRolUsuario.id).where(TipoRolUsuario.tipo == role_tipo_normalized)
+        ).first() or 1
+
+        # Asignar rol de usuario
         usuario_rol = UsuarioRol(
             id_usuario=db_user.id,
-            id_rol=1  # Rol de usuario básico
+            id_rol=role_id
         )
         session.add(usuario_rol)
         
@@ -276,10 +287,7 @@ class UserService:
         
         if not db_user:
             return None
-        
-        if not db_user.activo:
-            return None
-        
+
         if not verify_password(password, db_user.password_hash):
             # Incrementar contador de intentos fallidos
             db_user.intentos_login_fallidos += 1
@@ -289,7 +297,8 @@ class UserService:
         
         # Reset intentos fallidos y actualizar último login
         db_user.intentos_login_fallidos = 0
-        db_user.ultimo_login = datetime.utcnow()
+        if db_user.activo:
+            db_user.ultimo_login = datetime.utcnow()
         session.add(db_user)
         session.commit()
         

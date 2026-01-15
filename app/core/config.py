@@ -25,8 +25,15 @@ class Settings(BaseSettings):
     # URL del frontend (para links de recuperación de contraseña, etc.)
     frontend_url: str = "http://localhost:5173"
 
+    # Rol asignado al registrar usuarios vía /auth/register
+    registration_default_role: str = "administrador"
+
     # Porcentaje de saldo (cashback) sobre el gasto total del cliente
     client_balance_rate: float = 0.05
+
+    subscription_default_days: int = 30
+    subscription_grace_days: int = 7
+    subscription_sweep_on_startup: bool = True
 
     # Configuración CORS
     cors_origins: Union[str, List[str]] = [
@@ -37,7 +44,7 @@ class Settings(BaseSettings):
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-    cors_allow_headers: List[str] = ["Authorization", "Content-Type"]
+    cors_allow_headers: List[str] = ["Authorization", "Content-Type", "X-Request-ID", "X-Client", "X-Tenant-Slug"]
 
     # Configuración JWT
     secret_key: str
