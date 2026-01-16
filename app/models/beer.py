@@ -54,6 +54,7 @@ class Cerveza(BaseModel, TimestampMixin, table=True):
     proveedor: str = Field(max_length=50)
     activo: bool = Field(default=True, description="Si el producto está disponible")
     destacado: bool = Field(default=False, description="Si es un producto destacado")
+    stock_base: int = Field(default=0, ge=0, description="Stock base manual en litros")
     
     # Relaciones
     creador: "Usuario" = Relationship(back_populates="cervezas_creadas")
@@ -127,6 +128,7 @@ class CervezaBase(SQLModel):
     proveedor: str = Field(max_length=50)
     activo: bool = Field(default=True)
     destacado: bool = Field(default=False)
+    stock_base: int = Field(default=0, ge=0)
 
 
 class CervezaCreate(CervezaBase):

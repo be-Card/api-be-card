@@ -157,6 +157,7 @@ def get_cerveza(
     return cerveza_dict
 
 
+@router.post("", response_model=CervezaRead, status_code=201)
 @router.post("/", response_model=CervezaRead, status_code=201)
 def create_cerveza(
     cerveza_data: CervezaCreateRequest,

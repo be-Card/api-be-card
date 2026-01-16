@@ -85,6 +85,7 @@ class Equipo(BaseModel, table=True):
     creado_el: datetime = Field(default_factory=datetime.utcnow)
     id_punto_de_venta: Optional[int] = Field(foreign_key="puntos_de_venta.id", default=None)
     id_cerveza: Optional[int] = Field(foreign_key="cervezas.id", default=None)
+    activo: bool = Field(default=True, description="Si el equipo está activo")
     
     # Relaciones
     estado_equipo: TipoEstadoEquipo = Relationship(back_populates="equipos")

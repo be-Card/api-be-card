@@ -146,7 +146,7 @@ class CervezaService:
                 session.add(cerveza_estilo)
         
         # Crear precio inicial si se proporciona
-        if precio_inicial:
+        if precio_inicial is not None:
             precio = PrecioCerveza(
                 id_cerveza=cerveza.id,
                 precio=precio_inicial,
@@ -202,7 +202,7 @@ class CervezaService:
                 session.add(cerveza_estilo)
         
         # Crear nuevo precio si se proporciona
-        if precio_nuevo:
+        if precio_nuevo is not None:
             # Cerrar precio actual
             precio_actual = session.exec(
                 select(PrecioCerveza)
@@ -261,16 +261,19 @@ class CervezaService:
     @staticmethod
     def calculate_stock_total(session: Session, cerveza_id: int, *, tenant_id: int) -> int:
         """Calcular stock total basado en equipos activos"""
+        cerveza = session.get(Cerveza, cerveza_id)
+        base = int(getattr(cerveza, "stock_base", 0) or 0) if cerveza is not None else 0
         equipos = session.exec(
             select(Equipo)
             .where(Equipo.id_cerveza == cerveza_id)
+            .where(Equipo.activo == True)
             .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
             .where(PuntoVenta.tenant_id == tenant_id)
             .join(Equipo.estado_equipo)
             .where(Equipo.estado_equipo.has(permite_ventas=True))
         ).all()
         
-        return sum(equipo.capacidad_actual for equipo in equipos)
+        return base + sum(equipo.capacidad_actual for equipo in equipos)
     
     @staticmethod
     def get_estilos_cerveza(session: Session) -> List[TipoEstiloCervezaRead]:
@@ -401,6 +404,7 @@ class CervezaService:
             proveedor=cerveza.proveedor,
             activo=cerveza.activo,
             destacado=cerveza.destacado,
+            stock_base=int(getattr(cerveza, "stock_base", 0) or 0),
             creado_el=cerveza.creado_el,
             creado_por=cerveza.creado_por,
             estilos=estilos_read,

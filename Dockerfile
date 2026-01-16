@@ -12,8 +12,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && cp /root/.local/bin/uv /usr/local/bin/uv \
+    && chmod 0755 /usr/local/bin/uv
+ENV PATH="/usr/local/bin:$PATH"
 
 # Copiar archivos de configuración del proyecto
 COPY pyproject.toml uv.lock ./
