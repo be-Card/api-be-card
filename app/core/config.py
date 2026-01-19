@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     # Configuración JWT
     secret_key: str
+    device_uid_hmac_secret: Optional[str] = None
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     algorithm: str = "HS256"

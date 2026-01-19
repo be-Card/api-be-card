@@ -5,6 +5,9 @@ from sqlmodel import Session, select, SQLModel
 from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy.exc import IntegrityError
 
 from ..models.sales_point import (
     Equipo, EquipoCreate, EquipoRead, EquipoUpdate,
@@ -33,6 +36,72 @@ class CambiarCervezaRequest(SQLModel):
 
 class EquipoService:
     """Servicio de negocio para equipos"""
+
+    @staticmethod
+    def resolve_equipo_id(
+        session: Session,
+        *,
+        tenant_id: int,
+        equipo_id: Optional[int] = None,
+        equipo_id_ext: Optional[UUID] = None,
+        equipo_codigo: Optional[str] = None,
+    ) -> int:
+        if equipo_id is not None:
+            return int(equipo_id)
+
+        if equipo_id_ext is not None:
+            stmt = (
+                select(Equipo.id)
+                .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id, isouter=True)
+                .where(Equipo.id_ext == equipo_id_ext)
+                .where((Equipo.tenant_id == tenant_id) | (PuntoVenta.tenant_id == tenant_id))
+            )
+            resolved = session.exec(stmt).first()
+            if resolved is None:
+                raise ValueError("EQUIPO_NOT_FOUND")
+            return int(resolved)
+
+        if equipo_codigo is not None:
+            codigo = equipo_codigo.strip()
+            stmt = (
+                select(Equipo.id)
+                .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id, isouter=True)
+                .where(Equipo.codigo_equipo == codigo)
+                .where((Equipo.tenant_id == tenant_id) | (PuntoVenta.tenant_id == tenant_id))
+            )
+            resolved = session.exec(stmt).first()
+            if resolved is None:
+                raise ValueError("EQUIPO_NOT_FOUND")
+            return int(resolved)
+
+        raise ValueError("EQUIPO_REFERENCE_REQUIRED")
+
+    @staticmethod
+    def get_equipo_by_id_ext(session: Session, *, tenant_id: int, equipo_id_ext: UUID) -> Optional[EquipoDetailRead]:
+        stmt = (
+            select(Equipo)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id, isouter=True)
+            .where(Equipo.id_ext == equipo_id_ext)
+            .where((Equipo.tenant_id == tenant_id) | (PuntoVenta.tenant_id == tenant_id))
+        )
+        equipo = session.exec(stmt).first()
+        if not equipo:
+            return None
+        return EquipoService._equipo_to_detail_read(session, equipo)
+
+    @staticmethod
+    def get_equipo_by_codigo(session: Session, *, tenant_id: int, codigo_equipo: str) -> Optional[EquipoDetailRead]:
+        codigo = codigo_equipo.strip()
+        stmt = (
+            select(Equipo)
+            .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id, isouter=True)
+            .where(Equipo.codigo_equipo == codigo)
+            .where((Equipo.tenant_id == tenant_id) | (PuntoVenta.tenant_id == tenant_id))
+        )
+        equipo = session.exec(stmt).first()
+        if not equipo:
+            return None
+        return EquipoService._equipo_to_detail_read(session, equipo)
     
     @staticmethod
     def get_equipos_with_details(session: Session, tenant_id: Optional[int] = None) -> List[EquipoDetailRead]:
@@ -67,18 +136,136 @@ class EquipoService:
     def create_equipo(
         session: Session,
         equipo_data: EquipoCreate,
-        user_id: int
+        user_id: int,
+        tenant_id: int,
     ) -> EquipoDetailRead:
         """Crear nuevo equipo"""
         
         equipo_dict = equipo_data.model_dump()
         equipo = Equipo(**equipo_dict)
-        
-        session.add(equipo)
-        session.commit()
-        session.refresh(equipo)
+        equipo.tenant_id = tenant_id
+
+        if equipo.codigo_equipo is None:
+            equipo.codigo_equipo = EquipoService._generate_equipo_codigo(session, tenant_id=tenant_id)
+
+        for _ in range(5):
+            try:
+                session.add(equipo)
+                session.commit()
+                session.refresh(equipo)
+                break
+            except IntegrityError:
+                session.rollback()
+                equipo.codigo_equipo = EquipoService._generate_equipo_codigo(session, tenant_id=tenant_id, bump=1)
         
         return EquipoService._equipo_to_detail_read(session, equipo)
+
+    @staticmethod
+    def _generate_equipo_codigo(session: Session, *, tenant_id: int, bump: int = 0) -> str:
+        stmt = select(Equipo.codigo_equipo).where(Equipo.tenant_id == tenant_id, Equipo.codigo_equipo != None)
+        codigos = session.exec(stmt).all()
+        max_num = 0
+        for c in codigos:
+            if not c:
+                continue
+            if not c.startswith("EQ-"):
+                continue
+            suffix = c[3:]
+            if suffix.isdigit():
+                max_num = max(max_num, int(suffix))
+        next_num = max_num + 1 + int(bump)
+        return f"EQ-{next_num:06d}"
+
+    @staticmethod
+    def backfill_codigos(session: Session, *, tenant_id: Optional[int] = None) -> dict:
+        pv_codes_stmt = select(PuntoVenta.tenant_id, PuntoVenta.codigo_punto_venta).where(PuntoVenta.codigo_punto_venta != None)
+        if tenant_id is not None:
+            pv_codes_stmt = pv_codes_stmt.where(PuntoVenta.tenant_id == tenant_id)
+        pv_codes = session.exec(pv_codes_stmt).all()
+        pv_max_by_tenant: dict[int, int] = {}
+        for t_id, code in pv_codes:
+            if t_id is None or code is None:
+                continue
+            if not str(code).startswith("PV-"):
+                continue
+            suffix = str(code)[3:]
+            if suffix.isdigit():
+                pv_max_by_tenant[int(t_id)] = max(pv_max_by_tenant.get(int(t_id), 0), int(suffix))
+        pv_next_by_tenant = {t: m + 1 for t, m in pv_max_by_tenant.items()}
+
+        pvs_stmt = select(PuntoVenta)
+        if tenant_id is not None:
+            pvs_stmt = pvs_stmt.where(PuntoVenta.tenant_id == tenant_id)
+        puntos = session.exec(pvs_stmt).all()
+
+        updated_pv = 0
+        for pv in puntos:
+            if pv.codigo_punto_venta is None and pv.tenant_id is not None:
+                t_id = int(pv.tenant_id)
+                next_num = pv_next_by_tenant.get(t_id, 1)
+                pv.codigo_punto_venta = f"PV-{next_num:06d}"
+                pv_next_by_tenant[t_id] = next_num + 1
+                updated_pv += 1
+
+        eq_codes_stmt = select(Equipo.tenant_id, Equipo.codigo_equipo).where(Equipo.codigo_equipo != None, Equipo.tenant_id != None)
+        if tenant_id is not None:
+            eq_codes_stmt = eq_codes_stmt.where(Equipo.tenant_id == tenant_id)
+        eq_codes = session.exec(eq_codes_stmt).all()
+        eq_max_by_tenant: dict[int, int] = {}
+        for t_id, code in eq_codes:
+            if t_id is None or code is None:
+                continue
+            if not str(code).startswith("EQ-"):
+                continue
+            suffix = str(code)[3:]
+            if suffix.isdigit():
+                eq_max_by_tenant[int(t_id)] = max(eq_max_by_tenant.get(int(t_id), 0), int(suffix))
+        eq_next_by_tenant = {t: m + 1 for t, m in eq_max_by_tenant.items()}
+
+        equipos_stmt = select(Equipo)
+        if tenant_id is not None:
+            equipos_stmt = equipos_stmt.where((Equipo.tenant_id == tenant_id) | (Equipo.tenant_id == None))
+        equipos = session.exec(equipos_stmt).all()
+
+        updated_eq = 0
+        updated_eq_tenant = 0
+        for eq in equipos:
+            pv_tenant_id = None
+            if eq.tenant_id is None and eq.id_punto_de_venta is not None:
+                pv = session.get(PuntoVenta, eq.id_punto_de_venta)
+                if pv and pv.tenant_id is not None:
+                    eq.tenant_id = pv.tenant_id
+                    updated_eq_tenant += 1
+                    pv_tenant_id = int(pv.tenant_id)
+            if eq.tenant_id is not None:
+                pv_tenant_id = int(eq.tenant_id)
+
+            if eq.codigo_equipo is None and pv_tenant_id is not None:
+                next_num = eq_next_by_tenant.get(pv_tenant_id, 1)
+                eq.codigo_equipo = f"EQ-{next_num:06d}"
+                eq_next_by_tenant[pv_tenant_id] = next_num + 1
+                updated_eq += 1
+
+        session.commit()
+        return {"puntos_venta_actualizados": updated_pv, "equipos_actualizados": updated_eq, "equipos_tenant_actualizados": updated_eq_tenant}
+
+    @staticmethod
+    def _generate_punto_venta_codigo(session: Session, *, tenant_id: int, bump: int = 0) -> str:
+        stmt = select(PuntoVenta.codigo_punto_venta).where(
+            PuntoVenta.tenant_id == tenant_id, PuntoVenta.codigo_punto_venta != None
+        )
+        codigos = session.exec(stmt).all()
+        max_num = 0
+        for c in codigos:
+            if not c:
+                continue
+            if not c.startswith("PV-"):
+                continue
+            suffix = c[3:]
+            if suffix.isdigit():
+                max_num = max(max_num, int(suffix))
+        next_num = max_num + 1 + int(bump)
+        return f"PV-{next_num:06d}"
     
     @staticmethod
     def update_equipo(
@@ -335,6 +522,7 @@ class EquipoService:
                     email=punto_venta.email,
                     horario_apertura=punto_venta.horario_apertura,
                     horario_cierre=punto_venta.horario_cierre,
+                    codigo_punto_venta=punto_venta.codigo_punto_venta,
                     activo=punto_venta.activo,
                     creado_el=punto_venta.creado_el,
                     creado_por=punto_venta.creado_por,
@@ -373,6 +561,7 @@ class EquipoService:
             id=equipo.id,
             id_ext=str(equipo.id_ext),
             nombre_equipo=equipo.nombre_equipo,
+            codigo_equipo=equipo.codigo_equipo,
             id_barril=equipo.id_barril,
             capacidad_actual=equipo.capacidad_actual,
             temperatura_actual=equipo.temperatura_actual,
@@ -381,6 +570,7 @@ class EquipoService:
             id_estado_equipo=equipo.id_estado_equipo,
             id_punto_de_venta=equipo.id_punto_de_venta,
             id_cerveza=equipo.id_cerveza,
+            tenant_id=equipo.tenant_id,
             creado_el=equipo.creado_el,
             estado=estado_read,
             barril=barril_read,

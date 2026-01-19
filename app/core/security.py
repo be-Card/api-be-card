@@ -9,6 +9,12 @@ from app.core.config import settings
 # Configurar logging
 logger = logging.getLogger(__name__)
 
+def hmac_sha256_hex(value: str, *, secret: str) -> str:
+    import hmac
+    import hashlib
+
+    return hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
 def _truncate_password_safely(password: str) -> bytes:
     """
     Truncar contraseña de forma segura a 72 bytes para bcrypt.

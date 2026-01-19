@@ -56,6 +56,7 @@ class EmailVerificationService:
             raise ValueError("Usuario no encontrado")
 
         user.verificado = True
+        user.activo = True
         record.used_at = datetime.utcnow()
 
         session.add(user)

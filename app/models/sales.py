@@ -3,7 +3,7 @@ Modelos de ventas y transacciones para la API BeCard
 Incluye soporte para particionamiento por fecha
 """
 from sqlmodel import SQLModel, Field, Relationship, Index, Column
-from sqlalchemy import Numeric
+from sqlalchemy import Integer, Numeric
 from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 from decimal import Decimal
@@ -25,10 +25,9 @@ class Venta(SQLModel, table=True):
     """
     __tablename__ = "ventas"
     
-    # Clave primaria compuesta (id, fecha_hora) para particionamiento
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(sa_column=Column(Integer, primary_key=True, autoincrement=True), default=None)
     id_ext: str = Field(unique=True, index=True)
-    fecha_hora: datetime = Field(default_factory=datetime.utcnow, primary_key=True, index=True)
+    fecha_hora: datetime = Field(default_factory=datetime.utcnow, index=True)
     cantidad_ml: int = Field(gt=0, description="Cantidad en mililitros")
     monto_total: Decimal = Field(
         sa_column=Column(Numeric(10, 2), nullable=False),
