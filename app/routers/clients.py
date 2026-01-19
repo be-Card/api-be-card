@@ -75,17 +75,24 @@ async def create_client(
     current_user: Usuario = Depends(get_current_active_user),
     session: Session = Depends(get_session),
 ):
-    result = ClientService.create_client(
-        session,
-        tenant_id=tenant.id,
-        creado_por=current_user.id,
-        name=payload.name,
-        email=payload.email,
-        phone=payload.phone,
-        address=payload.address,
-        gender=payload.gender,
-        birth_date=payload.birthDate,
-    )
+    try:
+        result = ClientService.create_client(
+            session,
+            tenant_id=tenant.id,
+            creado_por=current_user.id,
+            name=payload.name,
+            email=payload.email,
+            phone=payload.phone,
+            address=payload.address,
+            gender=payload.gender,
+            birth_date=payload.birthDate,
+        )
+    except ValueError as e:
+        if str(e) == "EMAIL_ALREADY_EXISTS_OTHER_TENANT":
+            raise HTTPException(status_code=409, detail="El email ya está asociado a otro tenant")
+        if str(e) == "USERNAME_ALREADY_EXISTS":
+            raise HTTPException(status_code=409, detail="Ya existe un usuario con ese nombre de usuario")
+        raise HTTPException(status_code=400, detail=str(e))
 
     return ClientDetailResponse(
         client=result["client"],
