@@ -27,6 +27,9 @@ from app.models.pricing import *
 from app.models.rewards import *
 from app.models.sales import *
 from app.models.transactions import *
+from app.models.device_session import DeviceSession
+from app.models.cards import Card, CardAssignment
+from app.models.wallet import Wallet, WalletTxn
 
 # Crear el motor de la base de datos
 engine = create_engine(

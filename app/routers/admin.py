@@ -11,7 +11,7 @@ from app.core.database import get_session
 from app.core.config import settings
 from app.models.tenant import Tenant, TenantPayment, TenantUser
 from app.models.user_extended import TipoRolUsuario, Usuario, UsuarioRol
-from app.routers.auth import require_superadmin
+from app.routers.auth import require_admin
 from app.services.tenants import TenantService
 
 
@@ -152,7 +152,7 @@ def admin_list_users(
     pending_activation: Optional[bool] = Query(default=None),
     has_tenant: Optional[bool] = Query(default=None),
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     filters = [Usuario.email.is_not(None)]
     if pending_activation is True:
@@ -254,7 +254,7 @@ def admin_set_user_active(
     user_id: int,
     payload: AdminSetActiveRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     user = session.get(Usuario, user_id)
     if user is None:
@@ -272,7 +272,7 @@ def admin_list_tenants(
     search: Optional[str] = Query(default=None),
     activo: Optional[bool] = Query(default=None),
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     filters = []
     if activo is not None:
@@ -360,7 +360,7 @@ def admin_set_tenant_active(
     tenant_id: int,
     payload: AdminSetActiveRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -376,7 +376,7 @@ def admin_set_tenant_subscription(
     tenant_id: int,
     payload: AdminSetSubscriptionRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -409,7 +409,7 @@ def admin_renew_tenant_subscription(
     tenant_id: int,
     payload: AdminRenewSubscriptionRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -462,7 +462,7 @@ def admin_renew_tenant_subscription(
 @router.post("/subscriptions/sweep", response_model=dict)
 def admin_sweep_expired_subscriptions(
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     count = TenantService.sweep_expired_subscriptions(session)
     return {"disabled_tenants": count}
@@ -472,7 +472,7 @@ def admin_sweep_expired_subscriptions(
 def admin_list_tenant_payments(
     tenant_id: int,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -515,7 +515,7 @@ def admin_create_tenant_payment(
     tenant_id: int,
     payload: AdminCreatePaymentRequest,
     session: Session = Depends(get_session),
-    admin_user: Usuario = Depends(require_superadmin),
+    admin_user: Usuario = Depends(require_admin),
 ):
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -563,7 +563,7 @@ def admin_update_payment(
     payment_id: int,
     payload: AdminUpdatePaymentRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     payment = session.get(TenantPayment, payment_id)
     if payment is None:

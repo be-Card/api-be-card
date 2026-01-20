@@ -1,7 +1,7 @@
 """
 Modelos de puntos de venta, equipos y barriles para la API BeCard
 """
-from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlmodel import SQLModel, Field, Relationship, Column, Index
 from sqlalchemy import Numeric
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime, date
@@ -42,6 +42,7 @@ class TipoBarril(BaseModel, table=True):
 class PuntoVenta(BaseModel, TimestampMixin, table=True):
     """Puntos de venta (solo para socios)"""
     __tablename__ = "puntos_de_venta"
+    __table_args__ = (Index("ux_puntos_de_venta_tenant_codigo", "tenant_id", "codigo_punto_venta", unique=True),)
     
     nombre: str = Field(max_length=50)
     calle: str = Field(max_length=50)
@@ -53,6 +54,7 @@ class PuntoVenta(BaseModel, TimestampMixin, table=True):
     email: Optional[str] = Field(default=None, max_length=100)
     horario_apertura: Optional[str] = Field(default=None, description="Horario de apertura (TIME)")
     horario_cierre: Optional[str] = Field(default=None, description="Horario de cierre (TIME)")
+    codigo_punto_venta: Optional[str] = Field(default=None, max_length=20, index=True)
     id_usuario_socio: Optional[int] = Field(foreign_key="usuarios.id", default=None)
     tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     activo: bool = Field(default=True, description="Si el punto de venta está activo")
@@ -70,10 +72,13 @@ class PuntoVenta(BaseModel, TimestampMixin, table=True):
 class Equipo(BaseModel, table=True):
     """Equipos de dispensado de cerveza"""
     __tablename__ = "equipos"
+    __table_args__ = (Index("ux_equipos_tenant_codigo", "tenant_id", "codigo_equipo", unique=True),)
     
     id_estado_equipo: int = Field(foreign_key="tipos_estado_equipo.id")
     id_barril: int = Field(foreign_key="tipos_barril.id")
     nombre_equipo: Optional[str] = Field(max_length=50, default=None)
+    codigo_equipo: Optional[str] = Field(default=None, max_length=20, index=True)
+    tenant_id: Optional[int] = Field(foreign_key="tenants.id", default=None, index=True)
     capacidad_actual: int = Field(ge=0, description="Capacidad actual en litros")
     temperatura_actual: Optional[Decimal] = Field(
         default=None,
@@ -85,7 +90,7 @@ class Equipo(BaseModel, table=True):
     creado_el: datetime = Field(default_factory=datetime.utcnow)
     id_punto_de_venta: Optional[int] = Field(foreign_key="puntos_de_venta.id", default=None)
     id_cerveza: Optional[int] = Field(foreign_key="cervezas.id", default=None)
-    activo: bool = Field(default=True, description="Si el equipo está activo")
+    activo: bool = Field(default=True, index=True, description="Si el equipo está activo")
     
     # Relaciones
     estado_equipo: TipoEstadoEquipo = Relationship(back_populates="equipos")
@@ -147,6 +152,7 @@ class PuntoVentaBase(SQLModel):
     email: Optional[str] = Field(default=None, max_length=100)
     horario_apertura: Optional[str] = None
     horario_cierre: Optional[str] = None
+    codigo_punto_venta: Optional[str] = None
     activo: bool = Field(default=True)
 
 
@@ -176,6 +182,7 @@ class PuntoVentaUpdate(SQLModel):
     email: Optional[str] = Field(default=None, max_length=100)
     horario_apertura: Optional[str] = None
     horario_cierre: Optional[str] = None
+    codigo_punto_venta: Optional[str] = None
     activo: Optional[bool] = None
     id_usuario_socio: Optional[int] = None
 
@@ -183,6 +190,7 @@ class PuntoVentaUpdate(SQLModel):
 class EquipoBase(SQLModel):
     """Esquema base para equipo"""
     nombre_equipo: Optional[str] = Field(default=None, max_length=50)
+    codigo_equipo: Optional[str] = None
     id_barril: int
     capacidad_actual: int = Field(ge=0)
     temperatura_actual: Optional[Decimal] = None
@@ -191,6 +199,7 @@ class EquipoBase(SQLModel):
     id_estado_equipo: int
     id_punto_de_venta: Optional[int] = None
     id_cerveza: Optional[int] = None
+    tenant_id: Optional[int] = None
 
 
 class EquipoCreate(EquipoBase):
@@ -208,6 +217,7 @@ class EquipoRead(EquipoBase):
 class EquipoUpdate(SQLModel):
     """Esquema para actualizar equipo"""
     nombre_equipo: Optional[str] = Field(default=None, max_length=50)
+    codigo_equipo: Optional[str] = None
     id_barril: Optional[int] = None
     capacidad_actual: Optional[int] = Field(default=None, ge=0)
     temperatura_actual: Optional[Decimal] = None
@@ -216,3 +226,4 @@ class EquipoUpdate(SQLModel):
     id_estado_equipo: Optional[int] = None
     id_punto_de_venta: Optional[int] = None
     id_cerveza: Optional[int] = None
+    tenant_id: Optional[int] = None

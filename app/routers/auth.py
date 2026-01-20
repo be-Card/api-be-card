@@ -266,16 +266,16 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
         if str(e) == "EMAIL_ALREADY_EXISTS":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El email ingresado ya está registrado"
+                detail="El email ingresado ya está registrado",
             )
         if str(e) == "USERNAME_ALREADY_EXISTS":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El nombre de usuario ingresado ya está registrado"
+                detail="El nombre de usuario ingresado ya está registrado",
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El usuario no pudo ser registrado. Verifica los datos e intenta nuevamente."
+            detail="El usuario no pudo ser registrado. Verifica los datos e intenta nuevamente.",
         )
     except IntegrityError as e:
         session.rollback()

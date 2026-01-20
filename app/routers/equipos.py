@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, SQLModel, select
 from typing import List, Optional
 import logging
+from uuid import UUID
 
 from ..core.database import get_session
 from ..core.tenant import get_current_tenant
@@ -59,6 +60,7 @@ class PuntoVentaListRead(SQLModel):
     id: int
     id_ext: str
     nombre: str
+    codigo_punto_venta: Optional[str] = None
 
 
 class SimularConsumoRequest(SQLModel):
@@ -90,7 +92,7 @@ def get_puntos_venta(
         .where(PuntoVenta.tenant_id == tenant.id)
         .order_by(PuntoVenta.nombre)
     ).all()
-    return [PuntoVentaListRead(id=p.id, id_ext=str(p.id_ext), nombre=p.nombre) for p in puntos]
+    return [PuntoVentaListRead(id=p.id, id_ext=str(p.id_ext), nombre=p.nombre, codigo_punto_venta=p.codigo_punto_venta) for p in puntos]
 
 
 @router.get("/stock-bajo", response_model=EquipoResponse)
@@ -192,6 +194,30 @@ def get_equipo(
     return equipo
 
 
+@router.get("/by-id-ext/{equipo_id_ext}", response_model=EquipoDetailRead)
+def get_equipo_by_id_ext(
+    equipo_id_ext: UUID,
+    tenant: Tenant = Depends(get_current_tenant),
+    session: Session = Depends(get_session),
+):
+    equipo = EquipoService.get_equipo_by_id_ext(session, tenant_id=tenant.id, equipo_id_ext=equipo_id_ext)
+    if not equipo:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    return equipo
+
+
+@router.get("/by-code/{codigo_equipo}", response_model=EquipoDetailRead)
+def get_equipo_by_codigo(
+    codigo_equipo: str,
+    tenant: Tenant = Depends(get_current_tenant),
+    session: Session = Depends(get_session),
+):
+    equipo = EquipoService.get_equipo_by_codigo(session, tenant_id=tenant.id, codigo_equipo=codigo_equipo)
+    if not equipo:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    return equipo
+
+
 @router.post("/", response_model=EquipoDetailRead, status_code=201)
 def create_equipo(
     equipo_data: EquipoCreate,
@@ -232,7 +258,8 @@ def create_equipo(
         equipo = EquipoService.create_equipo(
             session=session,
             equipo_data=equipo_data,
-            user_id=current_user.id
+            user_id=current_user.id,
+            tenant_id=tenant.id,
         )
         
         return equipo

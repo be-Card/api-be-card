@@ -9,7 +9,7 @@ from app.core.database import get_session
 from app.core.config import settings
 from app.models.tenant import Tenant
 from app.models.user_extended import Usuario
-from app.routers.auth import get_current_active_user, require_superadmin
+from app.routers.auth import get_current_active_user, require_admin
 from app.services.users import UserService
 from app.services.tenants import TenantService
 
@@ -58,7 +58,7 @@ def get_my_tenants(
 def admin_create_tenant(
     payload: AdminCreateTenantRequest,
     session: Session = Depends(get_session),
-    admin_user: Usuario = Depends(require_superadmin),
+    admin_user: Usuario = Depends(require_admin),
 ):
     owner = UserService.get_user_by_email(session, payload.owner_email)
     if owner is None:
@@ -98,7 +98,7 @@ def admin_add_member(
     tenant_id: int,
     payload: AdminTenantMembershipRequest,
     session: Session = Depends(get_session),
-    _admin_user: Usuario = Depends(require_superadmin),
+    _admin_user: Usuario = Depends(require_admin),
 ):
     tenant_row = session.get(Tenant, tenant_id)
     if tenant_row is None:
