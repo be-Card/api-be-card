@@ -107,7 +107,7 @@ class EquipoService:
     def get_equipos_with_details(session: Session, tenant_id: Optional[int] = None) -> List[EquipoDetailRead]:
         """Obtener equipos con detalles completos"""
 
-        stmt = select(Equipo).order_by(Equipo.nombre_equipo, Equipo.id)
+        stmt = select(Equipo).where(Equipo.activo == True).order_by(Equipo.nombre_equipo, Equipo.id)
         if tenant_id is not None:
             stmt = (
                 stmt.join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)

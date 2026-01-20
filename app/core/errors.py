@@ -68,7 +68,7 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSO
 
 
 def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled error", extra={"request_id": _get_request_id(request)})
+    logger.exception("Unhandled error", exc_info=exc, extra={"request_id": _get_request_id(request)})
     return JSONResponse(
         status_code=500,
         content={

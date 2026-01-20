@@ -6,6 +6,8 @@ from sqlmodel import Session, select
 from datetime import datetime, date
 import secrets
 
+from sqlalchemy.exc import IntegrityError
+
 from app.models.user_extended import (
     Usuario, 
     UsuarioRol,
@@ -63,6 +65,12 @@ class UserService:
         """
         # Normalizar email a lowercase para evitar duplicados por case
         email_normalized = email.lower().strip()
+        username_normalized = (nombre_usuario or "").strip()
+
+        if UserService.get_user_by_email(session, email_normalized):
+            raise ValueError("EMAIL_ALREADY_EXISTS")
+        if username_normalized and UserService.get_user_by_username(session, username_normalized):
+            raise ValueError("USERNAME_ALREADY_EXISTS")
 
         # Hash de la contraseña
         password_hash = get_password_hash(password)
@@ -74,7 +82,7 @@ class UserService:
 
         # Crear usuario
         db_user = Usuario(
-            nombre_usuario=nombre_usuario.strip(),
+            nombre_usuario=username_normalized,
             codigo_cliente=codigo_cliente,
             email=email_normalized,
             password_hash=password_hash,
@@ -92,7 +100,15 @@ class UserService:
         )
         
         session.add(db_user)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            if UserService.get_user_by_email(session, email_normalized):
+                raise ValueError("EMAIL_ALREADY_EXISTS")
+            if username_normalized and UserService.get_user_by_username(session, username_normalized):
+                raise ValueError("USERNAME_ALREADY_EXISTS")
+            raise
         session.refresh(db_user)
         
         # Asignar nivel inicial

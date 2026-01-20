@@ -34,6 +34,7 @@ class ProfileMeResponse(BaseModel):
     email: Optional[str]
     telefono: Optional[str]
     direccion: Optional[str]
+    avatar: Optional[str]
     sexo: Optional[str]
     fecha_nac: Optional[str]
     fecha_creacion: str
@@ -47,6 +48,7 @@ class ProfileMeUpdateRequest(BaseModel):
     apellidos: str = Field(min_length=1, max_length=100)
     telefono: Optional[str] = Field(default=None, max_length=20)
     direccion: Optional[str] = Field(default=None, max_length=255)
+    avatar: Optional[str] = None
 
     puesto: Optional[str] = Field(default=None, max_length=100)
     departamento: Optional[str] = Field(default=None, max_length=100)
@@ -103,6 +105,7 @@ def get_profile_me(
         email=current_user.email,
         telefono=current_user.telefono,
         direccion=current_user.direccion,
+        avatar=getattr(current_user, "avatar", None),
         sexo=sexo,
         fecha_nac=current_user.fecha_nac.isoformat() if current_user.fecha_nac else None,
         fecha_creacion=current_user.fecha_creacion.isoformat(),
@@ -131,6 +134,13 @@ def update_profile_me(
     current_user.apellidos = payload.apellidos
     current_user.telefono = payload.telefono
     current_user.direccion = payload.direccion
+    if payload.avatar is not None:
+        avatar = payload.avatar.strip()
+        if avatar and len(avatar) > 1_500_000:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Avatar demasiado grande")
+        if avatar and not (avatar.startswith("data:image/") or avatar.startswith("http://") or avatar.startswith("https://")):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Avatar inválido")
+        current_user.avatar = avatar or None
 
     professional = _get_or_create_professional(session, current_user.id)
     professional.puesto = payload.puesto
@@ -164,6 +174,7 @@ def update_profile_me(
         email=current_user.email,
         telefono=current_user.telefono,
         direccion=current_user.direccion,
+        avatar=getattr(current_user, "avatar", None),
         sexo=sexo,
         fecha_nac=current_user.fecha_nac.isoformat() if current_user.fecha_nac else None,
         fecha_creacion=current_user.fecha_creacion.isoformat(),
@@ -180,4 +191,3 @@ def update_profile_me(
             reports=0,
         ),
     )
-

@@ -666,6 +666,46 @@ class ClientService:
         gender: str,
         birth_date: date,
     ) -> Dict[str, Any]:
+        email_normalized = (email or "").lower().strip()
+        existing = UserService.get_user_by_email(session, email_normalized)
+        if existing:
+            if existing.tenant_id is not None and existing.tenant_id != tenant_id:
+                raise ValueError("EMAIL_ALREADY_EXISTS_OTHER_TENANT")
+
+            name_parts = (name or "").strip().split()
+            first_name = name_parts[0] if name_parts else ""
+            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
+
+            gender_normalized = (gender or "").strip().lower()
+            sexo = "M" if gender_normalized.startswith("m") else "F" if gender_normalized.startswith("f") else "M"
+
+            if existing.tenant_id is None:
+                existing.tenant_id = tenant_id
+            if getattr(existing, "registrado_por", None) is None:
+                existing.registrado_por = creado_por
+
+            if first_name:
+                existing.nombres = first_name
+            if last_name:
+                existing.apellidos = last_name
+            if sexo:
+                existing.sexo = sexo
+            if birth_date and getattr(existing, "fecha_nac", None) is None:
+                existing.fecha_nac = birth_date
+            if phone and not getattr(existing, "telefono", None):
+                existing.telefono = phone
+            if address is not None and not getattr(existing, "direccion", None):
+                existing.direccion = address
+
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+
+            result = ClientService.get_client_detail(session, str(existing.id_ext), tenant_id=tenant_id)
+            if not result:
+                raise ValueError("No se pudo vincular el cliente")
+            return result
+
         name_parts = name.strip().split()
         first_name = name_parts[0] if name_parts else ""
         last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""

@@ -261,11 +261,21 @@ def register_user(request: Request, user: UserCreate, session: Session = Depends
             activo=False,
             role_tipo=settings.registration_default_role,
         )
-    except ValueError:
+    except ValueError as e:
         session.rollback()
+        if str(e) == "EMAIL_ALREADY_EXISTS":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El email ingresado ya está registrado",
+            )
+        if str(e) == "USERNAME_ALREADY_EXISTS":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El nombre de usuario ingresado ya está registrado",
+            )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Configuración de roles inválida"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario no pudo ser registrado. Verifica los datos e intenta nuevamente.",
         )
     except IntegrityError as e:
         session.rollback()
@@ -502,6 +512,7 @@ def read_current_user(
         sexo=sexo,
         fecha_nac=current_user.fecha_nac,  # Use correct field name 'fecha_nac'
         telefono=current_user.telefono,
+        avatar=getattr(current_user, "avatar", None),
         activo=current_user.activo,
         verificado=current_user.verificado,
         fecha_creacion=current_user.fecha_creacion,

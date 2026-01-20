@@ -43,6 +43,7 @@ class UserBase(BaseModel):
         validation_alias=AliasChoices("fecha_nac", "fecha_nacimiento"),
     )
     telefono: Optional[str] = Field(default=None, max_length=20)
+    avatar: Optional[str] = Field(default=None)
 
     @field_validator("sexo", mode="before")
     @classmethod
@@ -109,6 +110,7 @@ class UserUpdate(BaseModel):
     apellidos: Optional[str] = Field(default=None, max_length=50)  # Changed from 'apellido' to 'apellidos'
     telefono: Optional[str] = Field(default=None, max_length=20)
     email: Optional[EmailStr] = None
+    avatar: Optional[str] = None
     password: Optional[str] = Field(default=None, min_length=8, description="Contraseña (mínimo 8 caracteres, debe contener mayúscula, minúscula, número y carácter especial)")
 
     @field_validator("password")

@@ -6,6 +6,7 @@ from typing import List, Optional
 from sqlmodel import Session, select
 
 from app.models.tenant import Tenant, TenantUser
+from app.models.sales_point import PuntoVenta
 
 
 def _slugify(value: str) -> str:
@@ -82,6 +83,22 @@ class TenantService:
         session.add(tenant)
         session.commit()
         session.refresh(tenant)
+
+        pv = session.exec(select(PuntoVenta).where(PuntoVenta.tenant_id == tenant.id).limit(1)).first()
+        if pv is None:
+            pv = PuntoVenta(
+                nombre="Principal",
+                calle="Sin calle",
+                altura=1,
+                localidad="Sin localidad",
+                provincia="Sin provincia",
+                tenant_id=tenant.id,
+                activo=True,
+                creado_por=creado_por,
+                id_usuario_socio=creado_por,
+            )
+            session.add(pv)
+            session.commit()
         return tenant
 
     @staticmethod

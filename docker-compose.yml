@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
     volumes:
       - .:/app
-    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   # pgAdmin para administrar PostgreSQL
   pgadmin:

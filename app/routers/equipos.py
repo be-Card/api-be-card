@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, SQLModel, select
 from typing import List, Optional
 import logging
-from sqlalchemy.exc import IntegrityError
 from uuid import UUID
 
 from ..core.database import get_session
@@ -32,7 +31,7 @@ def _equipo_belongs_to_tenant(session: Session, *, equipo_id: int, tenant_id: in
     stmt = (
         select(Equipo.id)
         .join(PuntoVenta, Equipo.id_punto_de_venta == PuntoVenta.id)
-        .where(Equipo.id == equipo_id, PuntoVenta.tenant_id == tenant_id)
+        .where(Equipo.id == equipo_id, PuntoVenta.tenant_id == tenant_id, Equipo.activo == True)
     )
     return session.exec(stmt).first() is not None
 
@@ -229,7 +228,28 @@ def create_equipo(
     """Crear nuevo equipo"""
     
     try:
-        if equipo_data.id_punto_de_venta is not None:
+        if equipo_data.id_punto_de_venta is None:
+            pv_id = session.exec(
+                select(PuntoVenta.id).where(PuntoVenta.tenant_id == tenant.id).order_by(PuntoVenta.nombre).limit(1)
+            ).first()
+            if pv_id is None:
+                pv = PuntoVenta(
+                    nombre="Principal",
+                    calle="Sin calle",
+                    altura=1,
+                    localidad="Sin localidad",
+                    provincia="Sin provincia",
+                    tenant_id=tenant.id,
+                    id_usuario_socio=current_user.id,
+                    activo=True,
+                    creado_por=current_user.id,
+                )
+                session.add(pv)
+                session.flush()
+                equipo_data.id_punto_de_venta = pv.id
+            else:
+                equipo_data.id_punto_de_venta = pv_id
+        else:
             pv = session.exec(
                 select(PuntoVenta.id).where(PuntoVenta.id == equipo_data.id_punto_de_venta, PuntoVenta.tenant_id == tenant.id)
             ).first()
@@ -466,12 +486,6 @@ def delete_equipo(
     if not equipo:
         raise HTTPException(status_code=404, detail="Equipo no encontrado")
 
-    try:
-        session.delete(equipo)
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="No se puede eliminar el equipo porque tiene datos asociados"
-        )
+    equipo.activo = False
+    session.add(equipo)
+    session.commit()
