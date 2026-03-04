@@ -133,6 +133,21 @@ from .rewards import (
     ValidadorCanjes
 )
 
+# Modelos de terminales MQTT y telemetría
+from .terminal import (
+    TipoTelemetria,
+    UnidadTelemetria,
+    TipoEventoTerminal,
+    TerminalRegistro,
+    EquipoTelemetria,
+    TerminalEvento,
+    TerminalRegistroCreate,
+    TerminalRegistroRead,
+    TerminalCredencialesRead,
+    EquipoTelemetriaRead,
+    TerminalEventoRead,
+)
+
 # Modelos de transacciones (puntos y pagos)
 from .transactions import (
     TipoEstadoPago as TipoEstadoPagoTransaccion,
@@ -280,4 +295,17 @@ __all__ = [
     "PagoUpdate",
     "PagoResumen",
     "GestorTransaccionesPuntos",
+
+    # Terminal / MQTT
+    "TipoTelemetria",
+    "UnidadTelemetria",
+    "TipoEventoTerminal",
+    "TerminalRegistro",
+    "EquipoTelemetria",
+    "TerminalEvento",
+    "TerminalRegistroCreate",
+    "TerminalRegistroRead",
+    "TerminalCredencialesRead",
+    "EquipoTelemetriaRead",
+    "TerminalEventoRead",
 ]

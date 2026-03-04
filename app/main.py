@@ -12,7 +12,7 @@ from app.core.errors import (
 )
 from app.core.rate_limit import limiter
 from app.core.request_id import RequestIdMiddleware
-from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile, tenants, admin, device, cards, wallets, payments, sales
+from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile, tenants, admin, device, cards, wallets, payments, sales, terminales, mqtt_internal, ws_telemetria, webhooks
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -66,6 +66,10 @@ app.include_router(cards.router, prefix="/api/v1")
 app.include_router(wallets.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(sales.router, prefix="/api/v1")
+app.include_router(terminales.router, prefix="/api/v1")
+app.include_router(mqtt_internal.router, prefix="/api/v1")
+app.include_router(ws_telemetria.router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
 
 
 @app.on_event("startup")
@@ -80,6 +84,31 @@ def on_startup():
 
             with Session(engine) as session:
                 TenantService.sweep_expired_subscriptions(session)
+
+    # Iniciar tarea periódica para detectar terminales offline
+    import asyncio
+    import logging as _logging
+    from app.services.terminal_health import TerminalHealthService
+
+    _logger = _logging.getLogger("terminal-health")
+
+    async def _offline_check_loop():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                from app.core.database import engine as _engine
+                from sqlmodel import Session as _Session
+                with _Session(_engine) as session:
+                    TerminalHealthService.marcar_terminales_offline(session)
+            except Exception as e:
+                _logger.error("Error en health check de terminales: %s", e)
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(_offline_check_loop())
+        _logger.info("Terminal offline check loop iniciado")
+    except RuntimeError:
+        _logger.warning("No se pudo iniciar el loop de health check (no hay event loop)")
 
 
 @app.get("/")

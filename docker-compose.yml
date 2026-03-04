@@ -36,6 +36,13 @@ services:
       SECRET_KEY: your-secret-key-change-this-in-production-make-it-very-long-and-random-docker
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       REFRESH_TOKEN_EXPIRE_DAYS: 7
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      MQTT_TOPIC_PREFIX: becard
+      MQTT_INTERNAL_TOKEN: becard-internal-secret-2025
+      MQTT_BRIDGE_USERNAME: bridge
+      MQTT_BRIDGE_PASSWORD: bridge-secret
+      MQTT_BRIDGE_BASE_URL: http://mqtt-bridge:8100
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +54,12 @@ services:
     volumes:
       - .:/app
     command: sh -c "uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   # pgAdmin para administrar PostgreSQL
   pgadmin:
@@ -66,9 +79,58 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
+  # Mosquitto MQTT Broker (con mosquitto-go-auth para auth HTTP)
+  mosquitto:
+    build: ../mosquitto
+    container_name: becard_mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - becard_network
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -t test -n -u bridge -P bridge-secret 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # MQTT Bridge Service
+  mqtt-bridge:
+    build: ../mqtt-bridge-service
+    container_name: becard_mqtt_bridge
+    environment:
+      MQTT_BROKER_HOST: mosquitto
+      MQTT_BROKER_PORT: 1883
+      MQTT_CLIENT_ID: becard-bridge
+      MQTT_USERNAME: bridge
+      MQTT_PASSWORD: bridge-secret
+      MQTT_TOPIC_PREFIX: becard
+      API_BASE_URL: http://api:8000/api/v1
+      API_INTERNAL_TOKEN: becard-internal-secret-2025
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 8100
+    ports:
+      - "8100:8100"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - becard_network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   pgadmin_data:
+  mosquitto_data:
+  mosquitto_log:
 
 networks:
   becard_network:

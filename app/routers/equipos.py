@@ -473,6 +473,24 @@ def actualizar_temperatura(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+@router.get("/{equipo_id}/telemetria")
+def get_telemetria_equipo(
+    equipo_id: int,
+    tipo: Optional[str] = Query(None, description="Filtrar por tipo (temperature, barrel_level, flow_rate)"),
+    limit: int = Query(100, ge=1, le=1000),
+    tenant: Tenant = Depends(get_current_tenant),
+    session: Session = Depends(get_session),
+):
+    """Obtener historial de telemetría de un equipo"""
+    if not _equipo_belongs_to_tenant(session, equipo_id=equipo_id, tenant_id=tenant.id):
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+
+    from ..services.telemetria import TelemetriaService
+    return TelemetriaService.get_historial_telemetria(
+        session, tenant_id=tenant.id, equipo_id=equipo_id, tipo=tipo, limit=limit,
+    )
+
+
 @router.delete("/{equipo_id}", status_code=204)
 def delete_equipo(
     equipo_id: int,

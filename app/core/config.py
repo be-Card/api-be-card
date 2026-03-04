@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-    cors_allow_headers: List[str] = ["Authorization", "Content-Type", "X-Request-ID", "X-Client", "X-Tenant-Slug"]
+    cors_allow_headers: List[str] = ["Authorization", "Content-Type", "X-Request-ID", "X-Client", "X-Tenant-Slug", "X-Internal-Token"]
 
     # Configuración JWT
     secret_key: str
@@ -54,6 +54,22 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     jwt_issuer: Optional[str] = None
     jwt_audience: Optional[str] = None
+
+    # MQTT
+    mqtt_broker_host: str = "mosquitto"
+    mqtt_broker_port: int = 1883
+    mqtt_topic_prefix: str = "becard"
+    mqtt_internal_token: str = "change-this-internal-token"
+    mqtt_bridge_username: str = "bridge"
+    mqtt_bridge_password: str = "bridge-secret"
+    mqtt_bridge_base_url: str = "http://mqtt-bridge:8100"
+
+    # Payment Gateway
+    payment_gateway: str = "mercadopago"
+    mp_access_token: Optional[str] = None
+    mp_webhook_secret: Optional[str] = None
+    mp_user_id: Optional[str] = None
+    mp_pos_id: Optional[str] = None
 
     # Configuración Email
     email_backend: Literal["disabled", "smtp", "brevo"] = "disabled"
@@ -109,6 +125,10 @@ class Settings(BaseSettings):
                 raise ValueError("SQL_ECHO no debe estar habilitado en producción")
             if self.auto_create_db:
                 raise ValueError("AUTO_CREATE_DB no debe estar habilitado en producción")
+            if self.mqtt_internal_token == "change-this-internal-token":
+                raise ValueError("MQTT_INTERNAL_TOKEN debe cambiarse en producción")
+            if self.mqtt_bridge_password == "bridge-secret":
+                raise ValueError("MQTT_BRIDGE_PASSWORD debe cambiarse en producción")
         return self
 
     model_config = SettingsConfigDict(
