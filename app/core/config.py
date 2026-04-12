@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     # URL del frontend (para links de recuperación de contraseña, etc.)
     frontend_url: str = "http://localhost:5173"
+    backend_public_url: Optional[str] = None
 
     # Rol asignado al registrar usuarios vía /auth/register
     registration_default_role: str = "administrador"

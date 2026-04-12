@@ -148,6 +148,15 @@ from .terminal import (
     TerminalEventoRead,
 )
 
+from .terminal_checkout import (
+    TerminalCheckoutSession,
+    TerminalCheckoutSessionRead,
+    TerminalCheckoutPublicRead,
+    TerminalCheckoutCreateResponse,
+    TerminalCheckoutPaymentRequest,
+    TerminalCheckoutPaymentResponse,
+)
+
 # Modelos de transacciones (puntos y pagos)
 from .transactions import (
     TipoEstadoPago as TipoEstadoPagoTransaccion,
@@ -308,4 +317,11 @@ __all__ = [
     "TerminalCredencialesRead",
     "EquipoTelemetriaRead",
     "TerminalEventoRead",
+
+    "TerminalCheckoutSession",
+    "TerminalCheckoutSessionRead",
+    "TerminalCheckoutPublicRead",
+    "TerminalCheckoutCreateResponse",
+    "TerminalCheckoutPaymentRequest",
+    "TerminalCheckoutPaymentResponse",
 ]

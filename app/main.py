@@ -12,7 +12,7 @@ from app.core.errors import (
 )
 from app.core.rate_limit import limiter
 from app.core.request_id import RequestIdMiddleware
-from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile, tenants, admin, device, cards, wallets, payments, sales, terminales, mqtt_internal, ws_telemetria, webhooks
+from app.routers import users, auth, guests, clients, cervezas, equipos, pricing, dashboard, settings, reports, profile, tenants, admin, device, cards, wallets, payments, sales, terminales, mqtt_internal, ws_telemetria, webhooks, terminal_checkout
 from fastapi import HTTPException
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -67,6 +67,7 @@ app.include_router(wallets.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(sales.router, prefix="/api/v1")
 app.include_router(terminales.router, prefix="/api/v1")
+app.include_router(terminal_checkout.router, prefix="/api/v1")
 app.include_router(mqtt_internal.router, prefix="/api/v1")
 app.include_router(ws_telemetria.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")

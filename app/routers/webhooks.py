@@ -8,6 +8,7 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -19,8 +20,10 @@ from app.models.device_session import DeviceSession
 from app.models.points import CalculadoraPuntos, ReglaConversionPuntos
 from app.models.sales import Venta
 from app.models.sales_point import Equipo, PuntoVenta
+from app.models.terminal_checkout import TerminalCheckoutSession
 from app.models.transactions import Pago, TipoEstadoPago, TransaccionPuntos
 from app.models.user_extended import UsuarioNivel
+from app.services.terminal_checkout import TerminalCheckoutService
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +66,34 @@ async def mercadopago_webhook(request: Request):
 
     # Buscar el pago en nuestra BD
     with Session(engine) as db:
+        try:
+            external_ref_uuid = UUID(external_ref)
+        except ValueError:
+            external_ref_uuid = None
+
+        checkout_session = db.exec(
+            select(TerminalCheckoutSession).where(
+                TerminalCheckoutSession.id_ext == external_ref_uuid,
+            )
+        ).first()
+        if checkout_session:
+            if payment_data.status == "approved":
+                TerminalCheckoutService.mark_payment_approved(
+                    db,
+                    checkout_session=checkout_session,
+                    provider_payment_id=payment_data.provider_payment_id,
+                    amount=payment_data.amount,
+                )
+            elif payment_data.status in ("rejected", "cancelled"):
+                TerminalCheckoutService.mark_payment_rejected(
+                    db,
+                    checkout_session=checkout_session,
+                    provider_payment_id=payment_data.provider_payment_id,
+                )
+            else:
+                logger.info("MP webhook status=%s, ignorando checkout session", payment_data.status)
+            return {"ok": True}
+
         pago = db.exec(
             select(Pago).where(
                 Pago.id_transaccion_proveedor == external_ref,
@@ -73,7 +104,7 @@ async def mercadopago_webhook(request: Request):
             # external_ref podría ser el session_id_ext, buscar DeviceSession
             device_session = db.exec(
                 select(DeviceSession).where(
-                    DeviceSession.id_ext == external_ref,
+                    DeviceSession.id_ext == external_ref_uuid,
                 )
             ).first()
             if device_session and device_session.pago_id:
