@@ -190,6 +190,20 @@ class EventIngestRequest(SQLModel):
     payload: Optional[str] = None
     timestamp: Optional[datetime] = None
 
+class EquipoInfoRequest(SQLModel):
+    terminal_id_ext: str
+
+class EquipoInfoResponse(SQLModel):
+    ok: bool
+    cerveza_id: Optional[str] = None
+    cerveza_nombre: Optional[str] = None
+    cerveza_tipo: Optional[str] = None
+    cerveza_descripcion: Optional[str] = None
+    cerveza_imagen: Optional[str] = None
+    cerveza_abv: Optional[float] = None
+    cerveza_ibu: Optional[float] = None
+    precio_por_litro: Optional[float] = None
+    error: Optional[str] = None
 
 @router.post("/auth", response_model=MqttAuthResponse)
 def mqtt_auth(
@@ -297,6 +311,64 @@ def mqtt_event(
         timestamp=data.timestamp,
     )
 
+@router.post("/terminal-beer", response_model=EquipoInfoResponse)
+def mqtt_equipo_info(
+    data: EquipoInfoRequest,
+    session: Session = Depends(get_session),
+    _: None = Depends(verify_internal_token),
+):
+    """Info del equipo/cerveza para mostrar en el terminal al arrancar."""
+    from app.models.sales_point import Equipo
+    from app.models.beer import Cerveza
+    from app.models.pricing import ConsultaPrecio
+    from app.services.pricing import PricingService
+
+    terminal = _resolve_terminal(session, data.terminal_id_ext)
+
+    if not terminal.equipo_id:
+        return EquipoInfoResponse(ok=False, error="EQUIPO_NOT_CONFIGURED")
+
+    equipo = session.get(Equipo, terminal.equipo_id)
+    if not equipo or not equipo.activo:
+        return EquipoInfoResponse(ok=False, error="EQUIPO_NOT_FOUND")
+
+    if not equipo.id_cerveza:
+        return EquipoInfoResponse(ok=False, error="CERVEZA_NOT_CONFIGURED")
+
+    cerveza = session.get(Cerveza, equipo.id_cerveza)
+    if not cerveza:
+        return EquipoInfoResponse(ok=False, error="CERVEZA_NOT_FOUND")
+
+    precio_por_litro = None
+    try:
+        consulta = ConsultaPrecio(
+            id_cerveza=cerveza.id,
+            id_equipo=equipo.id,
+            id_punto_venta=equipo.id_punto_de_venta,
+        )
+        calculo = PricingService.calcular_precio(
+            session, consulta=consulta, tenant_id=terminal.tenant_id
+        )
+        precio_por_litro = float(calculo.precio_final)
+    except ValueError:
+        from app.services.cervezas import CervezaService
+        precio_base = CervezaService.get_precio_actual(session, cerveza.id)
+        if precio_base is not None:
+            precio_por_litro = float(precio_base)
+        else:
+            return EquipoInfoResponse(ok=False, error="CERVEZA_PRICE_NOT_CONFIGURED")
+
+    return EquipoInfoResponse(
+        ok=True,
+        cerveza_id=str(cerveza.id_ext),
+        cerveza_nombre=cerveza.nombre,
+        cerveza_tipo=cerveza.tipo,
+        cerveza_descripcion=cerveza.descripcion,
+        cerveza_imagen=cerveza.imagen,
+        cerveza_abv=float(cerveza.abv) if cerveza.abv else None,
+        cerveza_ibu=float(cerveza.ibu) if cerveza.ibu else None,
+        precio_por_litro=precio_por_litro,
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  GRUPO 3: Endpoints de sesión de dispensado (JSON, con X-Internal-Token)
