@@ -31,6 +31,7 @@ from app.models.device_session import DeviceSession
 from app.models.cards import Card, CardAssignment
 from app.models.wallet import Wallet, WalletTxn
 from app.models.terminal import TerminalRegistro, EquipoTelemetria, TerminalEvento
+from app.models.terminal_checkout import TerminalCheckoutSession
 
 # Crear el motor de la base de datos
 engine = create_engine(

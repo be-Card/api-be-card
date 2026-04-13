@@ -23,6 +23,7 @@ from ..services.device_sessions import DeviceSessionService
 from ..models.terminal import (
     TerminalRegistro, EquipoTelemetriaRead, TerminalEventoRead,
 )
+from app.services.terminal_checkout import TerminalCheckoutService
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +445,35 @@ class SendCommandRequest(SQLModel):
     payload: Optional[str] = None
 
 
+class QRCheckoutStartRequest(SQLModel):
+    terminal_id_ext: str
+
+
+class QRCheckoutStartResponse(SQLModel):
+    ok: bool
+    checkout_session_id: Optional[str] = None
+    qr_data: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    cerveza_nombre: Optional[str] = None
+    cerveza_tipo: Optional[str] = None
+    price_per_liter: Optional[float] = None
+    error: Optional[str] = None
+
+
+class QRDispenseSessionStartRequest(SQLModel):
+    terminal_id_ext: str
+    requested_ml: int
+    idempotency_key: Optional[str] = None
+
+
+class QRDispenseSessionCompleteRequest(SQLModel):
+    terminal_id_ext: str
+    session_id: str
+    poured_ml: int
+    provider_transaction_id: str
+    payment_method_name: str = "MercadoPago"
+
+
 @router.post("/card-lookup", response_model=CardLookupResponse)
 def mqtt_card_lookup(
     data: CardLookupRequest,
@@ -491,6 +521,106 @@ def mqtt_card_lookup(
         )
 
     return CardLookupResponse(ok=False, error="CARD_NO_WALLET")
+
+
+@router.post("/qr/checkout-start", response_model=QRCheckoutStartResponse)
+def mqtt_qr_checkout_start(
+    data: QRCheckoutStartRequest,
+    session: Session = Depends(get_session),
+    _: None = Depends(verify_internal_token),
+):
+    terminal = _resolve_terminal(session, data.terminal_id_ext)
+    if not settings.backend_public_url:
+        return QRCheckoutStartResponse(ok=False, error="BACKEND_PUBLIC_URL_REQUIRED")
+
+
+    checkout_base_url = (
+        f"{settings.backend_public_url.rstrip('/')}/api/v1/terminal-checkout/public"
+    )
+    try:
+        checkout_session = TerminalCheckoutService.create_screen_session(
+            session,
+            tenant_id=terminal.tenant_id,
+            terminal_id_ext=terminal.id_ext,
+            checkout_base_url=checkout_base_url,
+        )
+    except ValueError as e:
+        return QRCheckoutStartResponse(ok=False, error=str(e))
+    except Exception as e:
+        logger.exception("Error iniciando checkout QR")
+        return QRCheckoutStartResponse(ok=False, error=str(e))
+
+    return QRCheckoutStartResponse(
+        ok=True,
+        checkout_session_id=str(checkout_session.id_ext),
+        qr_data=checkout_session.checkout_url,
+        expires_at=checkout_session.expires_at,
+        cerveza_nombre=checkout_session.cerveza_nombre,
+        cerveza_tipo=checkout_session.cerveza_tipo,
+        price_per_liter=float(checkout_session.price_per_liter),
+    )
+
+
+@router.post("/qr/session-start", response_model=SessionStartResponse)
+def mqtt_qr_session_start(
+    data: QRDispenseSessionStartRequest,
+    session: Session = Depends(get_session),
+    _: None = Depends(verify_internal_token),
+):
+    terminal = _resolve_terminal(session, data.terminal_id_ext)
+    equipo_id = terminal.equipo_id
+    if not equipo_id:
+        return SessionStartResponse(ok=False, error="EQUIPO_NOT_CONFIGURED")
+
+    try:
+        device_session = DeviceSessionService.create_session(
+            session,
+            tenant_id=terminal.tenant_id,
+            equipo_id=int(equipo_id),
+            uid_hash=None,
+            requested_ml=data.requested_ml,
+            payment_mode="external",
+            idempotency_key=data.idempotency_key,
+            user_id=None,
+        )
+    except ValueError as e:
+        return SessionStartResponse(ok=False, error=str(e))
+
+    return SessionStartResponse(
+        ok=True,
+        session_id=str(device_session.id_ext),
+        cerveza_id=device_session.cerveza_id,
+        price_per_liter=float(device_session.price_per_liter),
+        max_ml=device_session.max_ml,
+        estimated_amount=float(device_session.estimated_amount),
+    )
+
+
+@router.post("/qr/session-complete", response_model=SessionCompleteResponse)
+def mqtt_qr_session_complete(
+    data: QRDispenseSessionCompleteRequest,
+    session: Session = Depends(get_session),
+    _: None = Depends(verify_internal_token),
+):
+    terminal = _resolve_terminal(session, data.terminal_id_ext)
+    try:
+        device_session = DeviceSessionService.complete_external_paid_session(
+            session,
+            tenant_id=terminal.tenant_id,
+            session_id_ext=data.session_id,
+            poured_ml=data.poured_ml,
+            payment_method_name=data.payment_method_name,
+            provider_transaction_id=data.provider_transaction_id,
+        )
+    except ValueError as e:
+        return SessionCompleteResponse(ok=False, error=str(e))
+
+    return SessionCompleteResponse(
+        ok=True,
+        status=device_session.status,
+        poured_ml=int(device_session.poured_ml or 0),
+        final_amount=float(device_session.final_amount or 0),
+    )
 
 
 @router.post("/session-start", response_model=SessionStartResponse)

@@ -330,6 +330,128 @@ class DeviceSessionService:
         return device_session
 
     @staticmethod
+    def complete_external_paid_session(
+        session: Session,
+        *,
+        tenant_id: int,
+        session_id_ext: str,
+        poured_ml: int,
+        payment_method_name: str,
+        provider_transaction_id: str,
+    ) -> DeviceSession:
+        device_session = session.exec(
+            select(DeviceSession).where(
+                DeviceSession.tenant_id == tenant_id,
+                DeviceSession.id_ext == session_id_ext,
+            )
+        ).first()
+        if not device_session:
+            raise ValueError("SESSION_NOT_FOUND")
+
+        if device_session.status == "completed":
+            return device_session
+
+        if device_session.payment_mode != "external":
+            raise ValueError("INVALID_PAYMENT_MODE")
+
+        poured_ml_capped = max(0, min(int(poured_ml), int(device_session.max_ml)))
+        final_amount = (Decimal(poured_ml_capped) / Decimal(1000)) * Decimal(
+            str(device_session.price_per_liter)
+        )
+        final_amount = final_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        from uuid import uuid4
+
+        venta = Venta(
+            id_ext=str(uuid4()),
+            fecha_hora=datetime.utcnow(),
+            cantidad_ml=poured_ml_capped,
+            monto_total=final_amount,
+            descuento_aplicado=Decimal("0.00"),
+            id_usuario=int(device_session.user_id) if device_session.user_id else None,
+            id_cerveza=int(device_session.cerveza_id),
+            id_equipo=int(device_session.equipo_id),
+        )
+        session.add(venta)
+        session.flush()
+
+        metodo = session.exec(
+            select(TipoMetodoPago).where(TipoMetodoPago.metodo_pago == payment_method_name)
+        ).first()
+        if not metodo:
+            metodo = TipoMetodoPago(
+                metodo_pago=payment_method_name, activo=True, requiere_autorizacion=False
+            )
+            session.add(metodo)
+            session.flush()
+
+        pago = Pago(
+            id_venta=int(venta.id),
+            fecha_venta=venta.fecha_hora,
+            id_metodo_pago=int(metodo.id),
+            monto=final_amount,
+            estado=TipoEstadoPago.APROBADO,
+            id_transaccion_proveedor=provider_transaction_id,
+            fecha_actualizacion=datetime.utcnow(),
+        )
+        session.add(pago)
+        session.flush()
+
+        if device_session.user_id:
+            now = datetime.utcnow()
+            reglas = session.exec(
+                select(ReglaConversionPuntos).where(
+                    ReglaConversionPuntos.activo == True,
+                    ReglaConversionPuntos.fecha_inicio <= now,
+                    (ReglaConversionPuntos.fecha_fin == None)
+                    | (ReglaConversionPuntos.fecha_fin >= now),
+                )
+            ).all()
+            calculo_puntos = CalculadoraPuntos.calcular_puntos(final_amount, list(reglas))
+
+            nivel = session.exec(
+                select(UsuarioNivel).where(
+                    UsuarioNivel.id_usuario == int(device_session.user_id)
+                )
+            ).first()
+            if not nivel:
+                nivel = UsuarioNivel(
+                    id_usuario=int(device_session.user_id), id_nivel=1, puntaje_actual=0
+                )
+                session.add(nivel)
+                session.flush()
+
+            saldo_anterior = int(nivel.puntaje_actual or 0)
+            saldo_posterior = max(0, saldo_anterior + int(calculo_puntos.puntos_ganados))
+            nivel.puntaje_actual = saldo_posterior
+            session.add(nivel)
+
+            tx_puntos = TransaccionPuntos(
+                id_usuario=int(device_session.user_id),
+                puntos_ganados=int(calculo_puntos.puntos_ganados),
+                puntos_canjeados=0,
+                saldo_anterior=max(0, saldo_anterior),
+                saldo_posterior=max(0, saldo_posterior),
+                id_venta=int(venta.id),
+                descripcion=f"Venta {venta.id_ext}",
+                tipo_transaccion="venta",
+            )
+            session.add(tx_puntos)
+
+        device_session.poured_ml = poured_ml_capped
+        device_session.final_amount = final_amount
+        device_session.status = "completed"
+        device_session.completed_at = datetime.utcnow()
+        device_session.venta_id = int(venta.id)
+        device_session.venta_fecha_hora = venta.fecha_hora
+        device_session.pago_id = int(pago.id)
+        session.add(device_session)
+
+        session.commit()
+        session.refresh(device_session)
+        return device_session
+
+    @staticmethod
     def complete_session(
         session: Session,
         *,
