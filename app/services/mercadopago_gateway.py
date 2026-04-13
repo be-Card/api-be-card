@@ -177,10 +177,18 @@ class MercadoPagoGateway(PaymentGatewayBase):
         try:
             payload = json.loads(body)
             data_id = str(payload.get("data", {}).get("id", ""))
+            if payload.get("type") == "order" or str(payload.get("action", "")).startswith("order."):
+                data_id = data_id.lower()
         except (json.JSONDecodeError, AttributeError):
             return False
 
-        manifest = f"id:{data_id};request-id:{x_request_id};ts:{ts};"
+        manifest_parts = []
+        if data_id:
+            manifest_parts.append(f"id:{data_id};")
+        if x_request_id:
+            manifest_parts.append(f"request-id:{x_request_id};")
+        manifest_parts.append(f"ts:{ts};")
+        manifest = "".join(manifest_parts)
         expected = hmac.new(
             secret.encode("utf-8"),
             manifest.encode("utf-8"),
@@ -225,7 +233,54 @@ class MercadoPagoGateway(PaymentGatewayBase):
                 f"{MP_API_BASE}/merchant_orders/{order_id}"
             )
 
+        if payload.get("type") == "order" or action.startswith("order."):
+            return self._parse_order_webhook(payload)
+
         raise ValueError(f"Tipo de webhook no soportado: action={action}, topic={topic}")
+
+    def _parse_order_webhook(self, payload: Dict[str, Any]) -> WebhookPaymentData:
+        data = payload.get("data", {}) or {}
+        external_reference = str(data.get("external_reference", ""))
+        amount = Decimal(str(data.get("total_amount", 0)))
+        order_status = str(data.get("status", ""))
+        action = str(payload.get("action", ""))
+
+        cash_outs = (((data.get("transactions") or {}).get("cash_outs")) or [])
+        provider_payment_id = ""
+        if cash_outs:
+            first_cash_out = cash_outs[0] or {}
+            provider_payment_id = str(
+                ((first_cash_out.get("reference") or {}).get("id"))
+                or first_cash_out.get("id")
+                or data.get("id", "")
+            )
+        elif data.get("id"):
+            provider_payment_id = str(data.get("id", ""))
+
+        status_map = {
+            "processed": "approved",
+            "canceled": "cancelled",
+            "refunded": "cancelled",
+            "expired": "cancelled",
+            "action_required": "pending",
+            "created": "pending",
+        }
+        normalized_status = status_map.get(order_status)
+        if normalized_status is None:
+            action_map = {
+                "order.processed": "approved",
+                "order.canceled": "cancelled",
+                "order.refunded": "cancelled",
+                "order.expired": "cancelled",
+            }
+            normalized_status = action_map.get(action, "pending")
+
+        return WebhookPaymentData(
+            provider_payment_id=provider_payment_id,
+            external_reference=external_reference,
+            status=normalized_status,
+            amount=amount,
+        )
 
     def _fetch_payment_data(self, payment_id: str) -> WebhookPaymentData:
         """Consulta un pago en MP por su ID"""

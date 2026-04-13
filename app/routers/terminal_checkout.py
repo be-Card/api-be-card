@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from sqlmodel import Session
 
 from app.core.config import settings
@@ -40,13 +40,13 @@ def create_terminal_checkout_session(
     current_user: Usuario = Depends(get_current_user),
 ):
     del current_user
-    checkout_base_url = _resolve_public_base_url(request)
+    checkout_base_url = _resolve_checkout_frontend_base_url(request)
     try:
         checkout_session = TerminalCheckoutService.create_screen_session(
             session,
             tenant_id=tenant.id,
             terminal_id_ext=terminal_id_ext,
-            checkout_base_url=f"{checkout_base_url}/api/v1/terminal-checkout/public",
+            checkout_base_url=f"{checkout_base_url}/checkout",
         )
     except ValueError as exc:
         detail = {
@@ -111,7 +111,7 @@ def get_terminal_checkout_session(
     )
 
 
-@router.get("/public/{session_id}", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/public/{session_id}", include_in_schema=False)
 def public_terminal_checkout_page(
     session_id: str,
     session: Session = Depends(get_session),
@@ -123,93 +123,10 @@ def public_terminal_checkout_page(
     if checkout_session is None:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-    return HTMLResponse(
-        content=f"""
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BeCard x Mercado Pago</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; background: #111827; color: #f9fafb; }}
-    .card {{ background: #1f2937; border-radius: 16px; padding: 24px; }}
-    .field {{ margin-bottom: 16px; }}
-    label {{ display: block; margin-bottom: 8px; font-weight: 700; }}
-    input, button {{ width: 100%; padding: 14px; border-radius: 12px; border: 0; box-sizing: border-box; }}
-    input {{ background: #f9fafb; color: #111827; }}
-    button {{ background: #00a650; color: white; font-size: 16px; font-weight: 700; cursor: pointer; }}
-    .secondary {{ margin-top: 12px; background: #374151; }}
-    .muted {{ color: #9ca3af; font-size: 14px; }}
-    #message {{ margin-top: 16px; white-space: pre-wrap; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>{checkout_session.cerveza_nombre}</h1>
-    <p>{checkout_session.cerveza_tipo or ""}</p>
-    <p class="muted">Terminal: {checkout_session.terminal_nombre}</p>
-    <p class="muted">Precio por litro: ${checkout_session.price_per_liter}</p>
-    <div class="field">
-      <label for="requested_ml">Mililitros</label>
-      <input id="requested_ml" type="number" min="100" step="50" placeholder="Ej: 500" />
-    </div>
-    <div class="field">
-      <label for="amount">O monto en pesos</label>
-      <input id="amount" type="number" min="1" step="0.01" placeholder="Ej: 2500" />
-    </div>
-    <button id="pay">Continuar con Mercado Pago</button>
-    <button id="refresh" class="secondary" type="button">Ver estado</button>
-    <div id="message"></div>
-  </div>
-  <script>
-    const message = document.getElementById("message");
-    async function createPayment() {{
-      message.textContent = "Generando pago...";
-      const requestedMl = document.getElementById("requested_ml").value;
-      const amount = document.getElementById("amount").value;
-      const body = {{}};
-      if (requestedMl) body.requested_ml = Number(requestedMl);
-      if (amount) body.amount = amount;
-      const response = await fetch("/api/v1/terminal-checkout/public/{session_id}/payments", {{
-        method: "POST",
-        headers: {{ "Content-Type": "application/json" }},
-        body: JSON.stringify(body),
-      }});
-      const data = await response.json();
-      if (!response.ok) {{
-        message.textContent = data.detail || "No se pudo generar el pago";
-        return;
-      }}
-      if (data.payment_flow === "redirect" && data.qr_data.startsWith("http")) {{
-        window.location.href = data.qr_data;
-        return;
-      }}
-      message.textContent = "El QR de Mercado Pago ya se envió a la pantalla de la terminal. Escanealo para completar el pago.";
-    }}
-    async function refreshState() {{
-      const response = await fetch("/api/v1/terminal-checkout/public/{session_id}/data");
-      const data = await response.json();
-      if (!response.ok) {{
-        message.textContent = data.detail || "No se pudo consultar el estado";
-        return;
-      }}
-      if (data.status === "approved") {{
-        message.textContent = "Pago aprobado. La terminal ya recibió la autorización para despachar.";
-        return;
-      }}
-      if (data.status === "rejected") {{
-        message.textContent = "El pago fue rechazado.";
-        return;
-      }}
-      message.textContent = "Estado actual: " + data.status;
-    }}
-    document.getElementById("pay").addEventListener("click", createPayment);
-    document.getElementById("refresh").addEventListener("click", refreshState);
-  </script>
-</body>
-</html>
-""".strip()
+    frontend_base_url = _resolve_checkout_frontend_base_url()
+    return RedirectResponse(
+        url=f"{frontend_base_url}/checkout/{session_id}",
+        status_code=307,
     )
 
 
@@ -287,9 +204,13 @@ def create_public_terminal_checkout_payment(
     )
 
 
-def _resolve_public_base_url(request: Request) -> str:
+def _resolve_checkout_frontend_base_url(request: Optional[Request] = None) -> str:
+    if settings.frontend_url:
+        return settings.frontend_url.rstrip("/")
     if settings.backend_public_url:
         return settings.backend_public_url.rstrip("/")
+    if request is None:
+        raise HTTPException(status_code=500, detail="No hay URL pública configurada para el checkout")
     return str(request.base_url).rstrip("/")
 
 

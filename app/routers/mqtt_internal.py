@@ -530,13 +530,11 @@ def mqtt_qr_checkout_start(
     _: None = Depends(verify_internal_token),
 ):
     terminal = _resolve_terminal(session, data.terminal_id_ext)
-    if not settings.backend_public_url:
-        return QRCheckoutStartResponse(ok=False, error="BACKEND_PUBLIC_URL_REQUIRED")
+    checkout_frontend_url = (settings.frontend_url or settings.backend_public_url or "").rstrip("/")
+    if not checkout_frontend_url:
+        return QRCheckoutStartResponse(ok=False, error="FRONTEND_URL_REQUIRED")
 
-
-    checkout_base_url = (
-        f"{settings.backend_public_url.rstrip('/')}/api/v1/terminal-checkout/public"
-    )
+    checkout_base_url = f"{checkout_frontend_url}/checkout"
     try:
         checkout_session = TerminalCheckoutService.create_screen_session(
             session,
